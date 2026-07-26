@@ -27,7 +27,7 @@ jobs:
           npm pack
           mkdir -p packtest
           tar -xzf claude-code-pace-*.tgz -C packtest
-          node packtest/package/bin/cc-pace.js --demo | grep -q "Weekly: 71%"
+          node packtest/package/bin/cc-pace.js --demo --no-color | grep -q "Weekly: 71%"
         shell: bash
 
   bench:
