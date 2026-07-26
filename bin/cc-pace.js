@@ -67,7 +67,7 @@ function main() {
 
     if (has("--setup")) {
         const snippet = {
-            statusLine: { type: "command", command: "npx -y cc-pace" },
+            statusLine: { type: "command", command: "npx -y claude-code-pace" },
         };
         process.stdout.write(`${JSON.stringify(snippet, null, 2)}\n`);
         return;

@@ -23,17 +23,19 @@ cannot be rate limited. Run twenty sessions side by side if you like.
 
 ## Install
 
+The package is published as **`claude-code-pace`**; the command it installs is **`cc-pace`**.
+
 ```jsonc
 // ~/.claude/settings.json
 {
-  "statusLine": { "type": "command", "command": "npx -y cc-pace" }
+  "statusLine": { "type": "command", "command": "npx -y claude-code-pace" }
 }
 ```
 
 `cc-pace --setup` prints that snippet. For a faster cold start, install it once and drop the `npx`:
 
 ```bash
-npm install -g cc-pace
+npm install -g claude-code-pace
 ```
 
 ```jsonc

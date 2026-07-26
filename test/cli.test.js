@@ -57,7 +57,7 @@ test("NO_COLOR suppresses every escape sequence", () => {
 });
 
 test("--setup prints a pasteable settings snippet", () => {
-    assert.equal(JSON.parse(run(["--setup"])).statusLine.command, "npx -y cc-pace");
+    assert.equal(JSON.parse(run(["--setup"])).statusLine.command, "npx -y claude-code-pace");
 });
 
 test("--config reports the resolved configuration", () => {
