@@ -81,7 +81,7 @@ function main() {
     }
 
     const raw = has("--demo")
-        ? readFileSync(join(HERE, "..", "test", "fixtures", "demo.json"), "utf8")
+        ? readFileSync(join(HERE, "..", "src", "demo.json"), "utf8")
         : readStdin();
 
     if (has("--dump")) {

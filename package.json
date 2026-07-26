@@ -1,6 +1,6 @@
 {
   "name": "claude-code-pace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claude Code statusline: usage limits, burn pace, and depletion ETA. Zero dependencies.",
   "keywords": [
     "claude-code",

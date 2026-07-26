@@ -20,8 +20,14 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Test
         run: npm test
-      - name: Smoke test the binary
-        run: node bin/cc-pace.js --demo
+      # Runs from the packed tarball, not the repo. A file the CLI needs at runtime but
+      # `files` omits works in the checkout and fails once published; only this catches it.
+      - name: Smoke test the packed tarball
+        run: |
+          npm pack
+          mkdir -p packtest
+          tar -xzf claude-code-pace-*.tgz -C packtest
+          node packtest/package/bin/cc-pace.js --demo | grep -q "Weekly: 71%"
         shell: bash
 
   bench:
