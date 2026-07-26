@@ -1,0 +1,43 @@
+{
+  "name": "cc-pace",
+  "version": "0.1.0",
+  "description": "Claude Code statusline: usage limits, burn pace, and depletion ETA. Zero dependencies.",
+  "keywords": [
+    "claude-code",
+    "statusline",
+    "usage",
+    "rate-limit",
+    "cli"
+  ],
+  "type": "module",
+  "bin": {
+    "cc-pace": "bin/cc-pace.js"
+  },
+  "exports": {
+    ".": "./src/render.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "demo": "node bin/cc-pace.js --demo",
+    "bench": "node test/bench.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "Giovanni Sasso <gsasso.dev@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/poisons77/cc-pace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/poisons77/cc-pace/issues"
+  },
+  "homepage": "https://github.com/poisons77/cc-pace#readme"
+}

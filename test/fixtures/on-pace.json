@@ -1,0 +1,18 @@
+{
+  "_now": 1800000000,
+  "cwd": "/home/dev/proj",
+  "workspace": {
+    "current_dir": "/home/dev/proj",
+    "project_dir": "/home/dev/proj"
+  },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 17,
+      "resets_at": 1800009000
+    },
+    "seven_day": {
+      "used_percentage": 71,
+      "resets_at": 1800172800
+    }
+  }
+}
