@@ -1,0 +1,156 @@
+# Account rotation
+
+Optional. cc-pace watches the rate-limit windows it already renders and runs a command when one
+crosses a threshold - it never learns what that command does. Pairing it with
+[cc-account](https://github.com/poisons77/cc-account) gives automatic account switching.
+
+Two patterns, depending on how the accounts relate.
+
+**Peers.** Accounts of equal worth. Spend whichever one you are on down to its bar, then move to
+whichever peer has the most room left. No account is privileged and there is nothing to come back
+to.
+
+**Primary and reserve.** A smaller plan whose 5-hour window fills fast, held next to a larger one
+kept back. Burn the primary, move to the fallback when a window runs dry, return the moment it
+refills.
+
+## Configure
+
+`~/.config/cc-pace/config.json` (or `$CC_PACE_CONFIG`):
+
+```json
+{
+  "rotation": {
+    "accounts": ["work", "personal"],
+    "buckets": {
+      "five_hour": 95,
+      "seven_day": { "at": 95, "lateAt": 99, "lateWithinSecs": 129600 }
+    },
+    "command": "cc-account"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `accounts` | peers to rotate between, in no particular order |
+| `buckets` | windows to watch, each with the percentage that forces a move |
+| `command` | prefix invoked as `<command> use <account>` (default `cc-account`) |
+| `store` | where the account tool publishes identity (default `~/.claude-accounts`) |
+| `log` | where decisions are appended (default `rotate.log` beside the state file; `false` disables) |
+| `ascii` | plain-text status marks instead of arrows |
+
+For the primary-and-reserve shape, name `primary` and `fallback` instead of `accounts`, and add
+`returnGraceSeconds` to wait past the reset before returning (default 60). Both shapes read the
+same `buckets`.
+
+`buckets` also accepts an array (`["five_hour"]`, all at `at`) or the singular `bucket` with `at`.
+
+**Use different thresholds per window.** A 5-hour window refills the same day, so leaving a few
+percent unused costs nothing. A weekly window is the scarce resource on a large plan - every
+percent abandoned there is gone for days, which is why 99 suits it and 95 suits the short one.
+
+**Raise the bar as the reset nears.** A bucket may take `{ "at": 95, "lateAt": 99,
+"lateWithinSecs": 129600 }` instead of a plain number. Percent left behind early in a window is
+percent unavailable for days, so the move happens at `at`; inside `lateWithinSecs` of the reset the
+refill is close and the same percent is nearly worthless, so `lateAt` drains the account rather
+than fleeing it.
+
+## Behaviour
+
+Peers:
+
+```
+any watched window at/above its bar  ->  switch to the peer with the most room left
+no peer with room                    ->  stay, and say so
+```
+
+Primary and reserve:
+
+```
+on primary,  any watched window at/above its bar        ->  switch to fallback
+on fallback, the clock passes the stored reset + grace  ->  switch back to primary
+```
+
+There, the fallback's own usage never triggers a switch: there is nowhere better to go, so moving
+would only bounce back. When several windows are over at once, the stored block runs until the
+**latest** of their resets - a weekly cap holds the return for days rather than returning within
+the hour and bouncing straight back out.
+
+## What is known about the account you are not on
+
+The payload describes the active account only, so every other account is judged by what was read of
+it while it *was* active. Those readings are kept per account and carried across switches.
+
+This is stale on utilization and exact on the reset - and staleness costs little, because an
+account nobody is using does not climb. A reset that has passed is the strongest answer available:
+the window has refilled, whatever it last read. An account never observed counts as usable, since
+assuming the worst of an unknown would strand you on a spent one.
+
+Readings are **not** filed during the settle window below: they still describe the account just
+left, and filing them under the new one would corrupt the very ledger that picks the next target.
+
+## When a switch does not happen
+
+The switch is spawned detached with its output discarded, so the account tool publishing the new
+identity is the only evidence it worked. If the target has not become active once the cooldown
+passes, the move is recorded as failed rather than done - no receipt is shown, the bar says
+`! switch to <account> failed`, and the target is left alone for five minutes so a broken command
+costs a log line rather than one spawn per keystroke.
+
+## Reading what happened
+
+Every decision that changed something appends one line beside the state file:
+
+```
+2026-09-01T07:03:01Z fire action=to-peer from=personal target=work because=seven_day read=seven_day:99%
+2026-09-01T07:03:47Z land target=work active=work after=46s
+```
+
+Transitions only - never one per render - so it stays small without pruning. `fire` records what
+the payload said and which window forced the move, so a decision can be judged afterwards instead
+of inferred from file timestamps.
+
+## Status line
+
+```
+Session: 95% (2h18m) | Weekly: 67% (4d20h) | → switching to personal
+Session: 4% (58m)    | Weekly: 99% (6d18h) | ! all limited · work in 4d20h
+Session: 2% (5h0m)   | Weekly: 61% (4d2h)  | ✓ on personal
+Session: 4% (58m)    | Weekly: 99% (6d18h) | ! switch to work failed
+```
+
+With `primary` and `fallback`, two more appear: `↩ work in 2h19m` while waiting out the primary's
+window, and `! both limited · work in 4d20h` when the reserve is capped too.
+
+A receipt is shown only while it is still true. Switch by hand inside the two minutes it lingers
+and it disappears, rather than naming an account you have already left.
+
+The state file is global, so **every session displays the rotation**, not only the one that crossed
+the threshold - the switch itself is machine-wide. Each session picks it up on its next render, so
+an idle session lags until touched.
+
+## What it costs a render
+
+Nothing measurable. The status line is written first; the engine then runs, and any switch is
+spawned detached and never awaited. The rendered text is stored as a finished string, so displaying
+it is a single field read.
+
+## Requirements and limits
+
+The account tool must publish which account is live, because **the statusline payload contains no
+account identity** - no email, organisation, or plan. cc-account writes
+`~/.claude-accounts/rotation-state.json` on every switch and on `cc-account current`.
+
+Rotation only runs **when the status line renders**. A threshold crossed during a long subagent run
+is missed until the next main-loop turn. Peer rotation has no clock-only trigger at all, so every
+decision it makes depends on a render.
+
+**Nothing is decided for two minutes after a switch.** `rate_limits` arrives with the last API
+response, so immediately after a move it still describes the previous account. Acting on it inverts
+the decision - a manual move off a spent account reads as the account just arrived at being spent,
+and the switch is undone, handing the next render the same stale evidence. The engine waits for
+`switchedAt` in the account tool's state file to age past the settle window before judging anything.
+
+Utilization of an account you are not on is only ever as fresh as the last time you were on it. The
+reset is exact; the percentage is a floor.

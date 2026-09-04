@@ -12,6 +12,7 @@ import { render, metrics } from "../src/render.js";
 import { loadConfig, configPath } from "../src/config.js";
 import { colorEnabled } from "../src/colors.js";
 import { readGit } from "../src/git.js";
+import { runThresholdHook } from "../src/threshold.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8"));
@@ -110,6 +111,12 @@ function main() {
             now,
         }),
     );
+
+    // After the line is written, so the hook can never delay the render. --demo carries a fixture
+    // payload and must not trigger real side effects.
+    if (config.onThreshold && !has("--demo")) {
+        runThresholdHook(payload.rate_limits, config.onThreshold, configPath());
+    }
 }
 
 try {

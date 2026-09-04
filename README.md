@@ -100,6 +100,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "separator": " | ",
   "paceOn": ["seven_day"],
   "eta": "when-early",
+  "minElapsedPct": 2,
   "warn": 0.95,
   "danger": 1.1,
   "usedWarn": 50,
@@ -112,10 +113,67 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   Aliases: `session`, `weekly`, `opus`, `sonnet`.
 - `paceOn` - which buckets get the ratio and ETA. Add `"five_hour"` to pace the session too.
 - `eta` - `when-early` (default), `always`, or `never`.
+- `minElapsedPct` - how much of a window must have elapsed before its ratio is shown. Below it the
+  denominator is near zero and the number is noise.
 - `ascii` - use `v`/`^` instead of `↓`/`↑` for fonts without the arrows.
 
 Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `CC_PACE_ASCII`,
 `CC_PACE_CONFIG`, `NO_COLOR`.
+
+## Switching accounts when a window runs dry
+
+cc-pace only ever reports. Knowing the weekly window dies Friday does not move you off it, and the
+statusline payload carries no account identity, so cc-pace cannot even name the account it is
+describing. Acting on the number is a separate job, and it belongs to
+[cc-account](https://github.com/poisons77/cc-account), which replays a saved OAuth token to switch
+the active account without a browser login.
+
+Each tool stands alone. cc-pace is a statusline whether or not you own a second account, and
+cc-account switches on demand whether or not anything watches the limits. Together they close the
+loop: cc-pace decides *when*, cc-account performs the switch and publishes *who* is now live, which
+is the identity cc-pace could not otherwise see.
+
+There are two ways to connect them, cheap and full.
+
+**One command at a threshold.** `onThreshold` runs any shell command once per window when a bucket
+crosses a percentage. cc-pace never learns what the command does.
+
+```json
+{
+  "onThreshold": { "bucket": "five_hour", "at": 95, "run": "cc-account rotate" }
+}
+```
+
+`cc-account rotate` moves to whichever account was switched away from longest ago. No account
+names in the config, no state beyond a latch that clears when the window resets.
+
+**The rotation engine.** Watches several windows, chooses a target on what it knows of each
+account, waits out the settle window after a move, and reports the outcome in the line itself:
+
+```json
+{
+  "rotation": {
+    "accounts": ["work", "personal"],
+    "buckets": { "five_hour": 95, "seven_day": { "at": 95, "lateAt": 99, "lateWithinSecs": 129600 } },
+    "command": "cc-account"
+  }
+}
+```
+
+```
+Session: 95% (2h18m) | Weekly: 67% (4d20h) | → switching to personal
+Session: 2% (5h0m)   | Weekly: 61% (4d2h)  | ✓ on personal
+```
+
+Name `primary` and `fallback` instead of `accounts` for a reserve account you return to rather than
+peers you rotate between.
+
+This tier needs cc-account specifically, because it reads the identity cc-account publishes to
+`~/.claude-accounts/rotation-state.json` on every switch. Any tool writing that file would do; no
+other tool does.
+
+Thresholds per window, what is known about an account you are not on, why nothing is decided for
+two minutes after a switch, and the failure reporting: [`docs/rotation.md`](docs/rotation.md).
 
 ## Performance
 
@@ -158,10 +216,13 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 53 tests, node:test, no dependencies
+npm test        # 89 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```
+
+How the pace ratio behaves early in a window, and why a cumulative ratio cannot see a burst:
+[`docs/pace-accuracy.md`](docs/pace-accuracy.md).
 
 ## Licence
 

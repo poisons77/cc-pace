@@ -3,16 +3,11 @@
 
 import { palette } from "./colors.js";
 import { computePace, paceLevel, WINDOW_SECS } from "./pace.js";
-import { clock, duration, percent, ratio as fmtRatio } from "./format.js";
+import { clock, duration, label, LABELS, percent, ratio as fmtRatio } from "./format.js";
 import { stateFlags } from "./git.js";
 import { DEFAULTS } from "./config.js";
 
-export const LABELS = {
-    five_hour: "Session",
-    seven_day: "Weekly",
-    seven_day_opus: "Opus",
-    seven_day_sonnet: "Sonnet",
-};
+export { LABELS, label };
 
 const SEGMENT_ALIASES = {
     session: "five_hour",
@@ -35,10 +30,6 @@ export function bucketKeys(rateLimits) {
         (k) => !(k in LABELS) && isBucket(rateLimits[k]),
     );
     return [...known, ...extra];
-}
-
-export function label(key) {
-    return LABELS[key] || key.replace(/_/g, " ");
 }
 
 function usedTone(c, pct, cfg) {
@@ -66,8 +57,10 @@ function renderBucket(key, limit, { c, cfg, now }) {
     const windowSecs = WINDOW_SECS[key];
     if (!windowSecs) return out;
 
-    const p = computePace(limit, windowSecs, now);
+    const p = computePace(limit, windowSecs, now, { minElapsedPct: cfg.minElapsedPct });
     if (!p) return out;
+    // Too early in the window for the ratio to mean anything: show used% and time left only.
+    if (!p.reliable) return out;
 
     const tone = paceTone(c, paceLevel(p.ratio, cfg));
     out += ` ${tone(fmtRatio(p.ratio))}`;
@@ -78,7 +71,7 @@ function renderBucket(key, limit, { c, cfg, now }) {
             : cfg.eta === "never"
               ? false
               : p.depletesBeforeReset;
-    if (showEta) out += ` ${tone(clock(p.depletesAt))}`;
+    if (showEta) out += ` ${tone(clock(p.depletesAt, now))}`;
 
     return out;
 }
@@ -137,7 +130,9 @@ export function metrics(payload, { config = DEFAULTS, now } = {}) {
 
     for (const key of bucketKeys(rateLimits)) {
         const limit = rateLimits[key];
-        const p = WINDOW_SECS[key] ? computePace(limit, WINDOW_SECS[key], nowSecs) : null;
+        const p = WINDOW_SECS[key]
+            ? computePace(limit, WINDOW_SECS[key], nowSecs, { minElapsedPct: cfg.minElapsedPct })
+            : null;
         out.limits[key] = {
             label: label(key),
             // The API sends floats such as 7.000000000000001; keep the precision that matters
@@ -148,6 +143,8 @@ export function metrics(payload, { config = DEFAULTS, now } = {}) {
             elapsed_percentage: p ? Number(p.elapsedPct.toFixed(2)) : null,
             pace_ratio: p ? Number(p.ratio.toFixed(3)) : null,
             pace_level: p ? paceLevel(p.ratio, cfg) : null,
+            // False while the window is too young for the ratio and ETA to be meaningful.
+            pace_reliable: p ? p.reliable : null,
             depletes_at: p ? p.depletesAt : null,
             depletes_before_reset: p ? p.depletesBeforeReset : null,
             safe_rate_percent_per_day: p?.safeRatePerDay != null ? Number(p.safeRatePerDay.toFixed(2)) : null,

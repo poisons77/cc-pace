@@ -1,12 +1,13 @@
 {
   "name": "claude-code-pace",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Claude Code statusline: usage limits, burn pace, and depletion ETA. Zero dependencies.",
   "keywords": [
     "claude-code",
     "statusline",
     "usage",
     "rate-limit",
+    "rotation",
     "cli"
   ],
   "type": "module",
@@ -19,6 +20,7 @@
   "files": [
     "bin",
     "src",
+    "docs",
     "README.md",
     "LICENSE"
   ],

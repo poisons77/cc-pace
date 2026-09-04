@@ -25,7 +25,9 @@ test("on-pace renders used, time left and ratio, but no ETA", () => {
 });
 
 test("over-pace renders an ETA earlier than the reset", () => {
-    assert.equal(plain("over-pace"), "Session: 88% (1h0m) | Weekly: 90% (2d0h) 1.26x Fri 21:20");
+    // The projection lands the same day it is read, so it is dated "today" rather than "Fri":
+    // a weekday name reads as a future date even when that weekday is the current one.
+    assert.equal(plain("over-pace"), "Session: 88% (1h0m) | Weekly: 90% (2d0h) 1.26x today 21:20");
 });
 
 test("under-pace hides the ETA because the window never runs dry", () => {

@@ -13,12 +13,18 @@ export const DEFAULTS = {
     paceOn: ["seven_day"],
     // "when-early" only shows the depletion clock if it lands before the window resets.
     eta: "when-early",
+    // Minimum share of a window that must have elapsed before its pace ratio and ETA are shown.
+    // Below this the denominator is near zero and the numbers are noise (see src/pace.js).
+    minElapsedPct: 2,
     warn: 0.95,
     danger: 1.1,
     // Percentage thresholds that tint the raw used% figure.
     usedWarn: 50,
     usedDanger: 80,
     ascii: false,
+    // Optional {bucket, at, run}: runs a command once per window when used% crosses `at`.
+    // See src/threshold.js.
+    onThreshold: null,
 };
 
 export function configPath(env = process.env) {
