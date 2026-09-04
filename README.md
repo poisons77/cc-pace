@@ -133,7 +133,21 @@ cc-account switches on demand whether or not anything watches the limits. Togeth
 loop: cc-pace decides *when*, cc-account performs the switch and publishes *who* is now live, which
 is the identity cc-pace could not otherwise see.
 
-There are two ways to connect them, cheap and full.
+Install it alongside cc-pace:
+
+```bash
+npm install -g cc-account
+```
+
+Or as a Claude Code plugin, which also gives a `/cc-account` command:
+
+```
+/plugin marketplace add poisons77/cc-account
+/plugin install cc-account@cc-account
+```
+
+Save a snapshot once per account (`cc-account save <name>`), then connect the two at one of two
+depths, cheap and full.
 
 **One command at a threshold.** `onThreshold` runs any shell command once per window when a bucket
 crosses a percentage. cc-pace never learns what the command does.
