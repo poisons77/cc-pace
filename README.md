@@ -277,7 +277,7 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 111 tests, node:test, no dependencies
+npm test        # 127 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```
