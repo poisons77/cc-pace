@@ -98,6 +98,7 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | burn | the recent-rate warning above; empty while the recent rate is safe |
 | rotation | account-switch status, when `rotation` is configured - see below |
 | git | branch plus `*` modified, `+` untracked, `↓n` behind, `↑n` ahead |
+| chain | the output of another statusline, when `chain` is configured - see [Keep your current statusline](#keep-your-current-statusline) |
 | `! config` | appears when the config file cannot be read, so defaults are in force |
 
 Buckets Claude Code starts sending that cc-pace has never heard of are rendered anyway, with a
@@ -125,7 +126,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 ```json
 {
-  "segments": ["limits", "pool", "cache", "burn", "rotation", "git"],
+  "segments": ["limits", "pool", "cache", "burn", "rotation", "git", "chain"],
   "separator": " | ",
   "hideCalm": false,
   "showModelWindows": false,
@@ -161,6 +162,19 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `CC_PACE_ASCII`,
 `CC_PACE_CONFIG`, `NO_COLOR`.
+
+### Keep your current statusline
+
+Claude Code runs one statusline command. To keep the one you had, give it to cc-pace as `chain`:
+
+```json
+{ "chain": "npx -y other-statusline", "chainTimeoutMs": 1000 }
+```
+
+cc-pace hands it the same payload, runs it while doing its own work, and adds its output where
+`"chain"` sits in `segments` - last by default - each line of it joined like a segment, colours
+kept. If it fails, prints nothing or takes longer than `chainTimeoutMs`, cc-pace's own line shows
+alone. A chained command that leads back to cc-pace is not run again.
 
 ## With cc-account
 
@@ -288,7 +302,7 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 137 tests, node:test, no dependencies
+npm test        # 141 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```

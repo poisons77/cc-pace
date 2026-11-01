@@ -175,8 +175,8 @@ function renderGit(git, { c, cfg }) {
  * @param {object} [opts.config]
  * @param {number} [opts.now] Unix seconds.
  * @param {object|null} [opts.git] Result of readGit(), or null.
- * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null}} [opts.notes]
- *   What the `burn`, `rotation` and `pool` segments show, and the model mix named beside
+ * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null, chain?: string[]}} [opts.notes]
+ *   What the `burn`, `rotation`, `pool` and `chain` segments show, and the model mix named beside
  *   an over-budget ratio; the CLI computes them, since all of them keep state on disk.
  * @returns {string}
  */
@@ -203,6 +203,8 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
         else if (name === "pool") parts.push(renderPool(notes, ctx));
         else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");
+        // The chained statusline keeps its own colours; its lines join the line like segments.
+        else if (name === "chain") parts.push(...(notes.chain ?? []));
         else {
             const key = segmentKey(name, rateLimits);
             if (isBucket(rateLimits[key])) parts.push(renderBucket(key, rateLimits[key], ctx));

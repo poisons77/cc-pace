@@ -10,7 +10,7 @@ export const DEFAULTS = {
     // "limits" expands to every rate-limit bucket the payload actually carries. "burn" is the
     // recent-rate warning (src/burn.js), "rotation" the account-switch status (src/rotation.js);
     // both render nothing until they have something to say.
-    segments: ["limits", "pool", "cache", "burn", "rotation", "git"],
+    segments: ["limits", "pool", "cache", "burn", "rotation", "git", "chain"],
     separator: " | ",
     // Windows limited to one model (Opus, Sonnet, Fable, any added later) are hidden from "limits";
     // the account-wide windows are the ones that stop work. Name one in `segments` to show only it.
@@ -42,6 +42,10 @@ export const DEFAULTS = {
     // warn threshold.
     hideCalm: false,
     ascii: false,
+    // Another statusline command, run on the same payload; its output is the "chain" segment
+    // (src/chain.js). Waited for at most `chainTimeoutMs`, then left out.
+    chain: null,
+    chainTimeoutMs: 1000,
     // Optional {bucket, at, run}: runs a command once per window when used% crosses `at`.
     // See src/threshold.js.
     onThreshold: null,

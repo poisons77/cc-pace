@@ -44,6 +44,7 @@ SEGMENTS
                                      a warning before a large prompt cache expires
   Weekly 1h7m to 100% (22:13)        the last hour's rate hits the wall before the reset
   main [*+]                          git branch and working-tree state
+  (chain)                            the output of another statusline, set with "chain" in config
 
   Pace ratio is used% divided by elapsed%. 1.00x means exactly on budget;
   above 1 means the window runs dry before it resets.
@@ -110,6 +111,13 @@ async function main() {
         return;
     }
 
+    // Started first, so the other statusline runs while cc-pace does its own work. Imported only when
+    // configured; --demo has no real payload to hand it.
+    const chained =
+        config.chain && !has("--demo")
+            ? import("../src/chain.js").then(({ runChain }) => runChain(config.chain, raw, { timeoutMs: config.chainTimeoutMs }))
+            : Promise.resolve([]);
+
     const cwd = payload.workspace?.current_dir || payload.cwd || payload.workspace?.project_dir;
     const shown = segmentNames(config.segments);
     const git = shown.includes("git") && cwd ? readGit(cwd) : null;
@@ -134,20 +142,32 @@ async function main() {
     const rotation = rotating ? await import("../src/rotation.js") : null;
     const rotationText = rotation && shown.includes("rotation") ? rotation.readDisplay(file) : null;
     const pool = rotation && shown.includes("pool") ? rotation.readForecast(file) : null;
+    const chain = await chained.catch(() => []);
 
-    process.stdout.write(
-        render(payload, {
-            color: colorEnabled({ noColorFlag: has("--no-color") }),
-            config,
-            git,
-            now,
-            notes: { burn, rotation: rotationText, share, mix, pool },
-        }),
+    const written = new Promise((resolve) =>
+        process.stdout.write(
+            render(payload, {
+                color: colorEnabled({ noColorFlag: has("--no-color") }),
+                config,
+                git,
+                now,
+                notes: { burn, rotation: rotationText, share, mix, pool, chain },
+            }),
+            resolve,
+        ),
     );
 
     // After the line is written, so neither can delay the render. Any switch is spawned detached.
     if (live && config.onThreshold) runThresholdHook(payload.rate_limits, config.onThreshold, file);
     if (rotation) rotation.runRotation(payload.rate_limits, config.rotation, file, now);
+
+    // A chained command that outlived its timeout can leave a grandchild holding the process open:
+    // on Windows, killing the shell does not kill what the shell started. Once the line is out,
+    // nothing else is owed.
+    if (config.chain) {
+        await written;
+        process.exit(0);
+    }
 }
 
 main().catch(() => {
