@@ -94,7 +94,7 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
 | `Opus` / `Sonnet` / `Fable` | a model's own weekly window, such as `seven_day_fable`, when your plan reports it. Hidden unless `showModelWindows` is on; any model added later is labelled and paced the same way |
 | `Pool` | with account rotation: whether the accounts together last at your working pace - green `↑40%` to push, red `↓24%` to slow down, with when they run dry and for how long - see [With cc-account](#with-cc-account) |
-| `This chat` | this session's share of what all open sessions spent in the last hour, e.g. `This chat: 35% of burn`; shown once a second session is burning |
+| `chat` | this session's share of what all open sessions spent in the last hour, e.g. `chat 35%`; shown once a second session is burning |
 | `Memory` | how full this conversation is - what `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything |
 | cache | `cache cold in 12m (270k)`, then `cache cold: next turn re-sends 270k` - a conversation of at least 100k tokens whose prompt cache is within 15 minutes of expiring. Past expiry, the next turn re-sends the whole conversation as cache writes, which can cost more than an hour of work; `/compact` before a break avoids it. From `prompt_cache` in the payload (Claude Code 2.1.251+) |
 | burn | the recent-rate warning above; empty while the recent rate is safe |

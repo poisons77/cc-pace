@@ -143,7 +143,7 @@ function renderPool(forecast, { c, cfg, now }) {
 /** This session's share of the cost every open session burned over the last hour. */
 function renderShare(share, { c }) {
     if (typeof share !== "number") return "";
-    return `This chat: ${c.cyan(percent(share))} of burn`;
+    return `chat ${c.cyan(percent(share))}`;
 }
 
 function renderGit(git, { c, cfg }) {

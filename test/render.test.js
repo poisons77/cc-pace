@@ -148,7 +148,7 @@ test("this session's share of the burn renders where its segment sits", () => {
         config: { ...DEFAULTS, segments: ["weekly", "share"] },
         notes: { share: 34.6 },
     });
-    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | This chat: 35% of burn");
+    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | chat 35%");
 });
 
 test("over budget, the line names the model and settings doing the burning", () => {
