@@ -3,7 +3,7 @@
 
 import { palette } from "./colors.js";
 import { computePace, modelOf, paceLevel, windowSecs } from "./pace.js";
-import { cause, clock, duration, label, LABELS, percent, ratio as fmtRatio } from "./format.js";
+import { cause, clock, duration, label, LABELS, percent, ratio as fmtRatio, tokens } from "./format.js";
 import { stateFlags } from "./git.js";
 import { DEFAULTS } from "./config.js";
 
@@ -101,6 +101,22 @@ function renderMemory(payload, { c, cfg }) {
     return `Memory: ${tone(percent(pct))}`;
 }
 
+/**
+ * Warns before a large conversation's prompt cache goes cold. Past its TTL the next turn re-sends
+ * the whole conversation as cache writes - after a break, one turn can cost more than an hour of
+ * work. Silent while the cache is warm with time to spare, or the conversation is small.
+ */
+function renderCache(payload, { c, cfg, now }) {
+    const pc = payload?.prompt_cache;
+    const size = pc?.recache_tokens_if_cold;
+    if (!pc?.caching_observed || typeof size !== "number" || size < cfg.cacheWarnTokens) return "";
+    if (typeof pc.expires_at !== "number") return "";
+    const left = pc.expires_at - now;
+    if (left <= 0) return c.red(`cache cold: next turn re-sends ${tokens(size)}`);
+    if (left <= cfg.cacheWarnSecs) return c.yellow(`cache cold in ${duration(left)} (${tokens(size)})`);
+    return "";
+}
+
 /** This session's share of the cost every open session burned over the last hour. */
 function renderShare(share, { c }) {
     if (typeof share !== "number") return "";
@@ -145,6 +161,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
         }
         if (name === "git") parts.push(renderGit(git, ctx));
         else if (name === "memory") parts.push(renderMemory(payload, ctx));
+        else if (name === "cache") parts.push(renderCache(payload, ctx));
         else if (name === "share") parts.push(renderShare(notes.share, ctx));
         else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");

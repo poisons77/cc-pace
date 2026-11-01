@@ -206,6 +206,24 @@ test("a model's window gets pace from its base window, without being listed anyw
     assert.match(out, /^Fable: 40% \(2d0h\) 0\.56x$/);
 });
 
+const cacheLine = (prompt_cache, now = 1800000000) =>
+    render({ prompt_cache }, { color: false, now, config: { ...DEFAULTS, segments: ["cache"] } });
+const warmCache = { caching_observed: true, warm: true, expires_at: 1800000000 + 720, recache_tokens_if_cold: 270400 };
+
+test("a large conversation's cache is flagged before it goes cold, and once it has", () => {
+    assert.equal(cacheLine(warmCache), "cache cold in 12m (270k)");
+    assert.equal(cacheLine(warmCache, 1800000000 + 720), "cache cold: next turn re-sends 270k");
+    assert.equal(cacheLine({ ...warmCache, recache_tokens_if_cold: 2_400_000 }, 1800000000 + 900), "cache cold: next turn re-sends 2.4m");
+});
+
+test("the cache warning stays quiet with time to spare, a small conversation, or no caching", () => {
+    assert.equal(cacheLine({ ...warmCache, expires_at: 1800000000 + 3000 }), "", "50 minutes left");
+    assert.equal(cacheLine({ ...warmCache, recache_tokens_if_cold: 40000 }), "", "cheap to re-send");
+    assert.equal(cacheLine({ ...warmCache, caching_observed: false }), "");
+    assert.equal(cacheLine({ ...warmCache, expires_at: null }), "");
+    assert.equal(cacheLine(undefined), "");
+});
+
 test("a config that failed to load is flagged at the end of the line", () => {
     assert.ok(plain("on-pace", { configError: true }).endsWith(" | ! config"));
 });

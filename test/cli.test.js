@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DEFAULTS } from "../src/config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BIN = join(HERE, "..", "bin", "cc-pace.js");
@@ -69,13 +70,15 @@ test("NO_COLOR suppresses every escape sequence", () => {
 });
 
 test("--setup prints a pasteable settings snippet", () => {
-    assert.equal(JSON.parse(run(["--setup"])).statusLine.command, "npx -y claude-code-pace");
+    const { statusLine } = JSON.parse(run(["--setup"]));
+    assert.equal(statusLine.command, "npx -y claude-code-pace");
+    assert.equal(statusLine.refreshInterval, 60, "redraws while idle, when the cache warning matters");
 });
 
 test("--config reports the resolved configuration", () => {
     const out = JSON.parse(run(["--config"]));
     assert.ok(out.path.endsWith("config.json"));
-    assert.deepEqual(out.config.segments, ["limits", "share", "memory", "burn", "rotation", "git"]);
+    assert.deepEqual(out.config.segments, DEFAULTS.segments);
 });
 
 test("environment overrides reach the renderer", () => {

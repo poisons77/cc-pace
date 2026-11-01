@@ -10,7 +10,7 @@ export const DEFAULTS = {
     // "limits" expands to every rate-limit bucket the payload actually carries. "burn" is the
     // recent-rate warning (src/burn.js), "rotation" the account-switch status (src/rotation.js);
     // both render nothing until they have something to say.
-    segments: ["limits", "share", "memory", "burn", "rotation", "git"],
+    segments: ["limits", "share", "memory", "cache", "burn", "rotation", "git"],
     separator: " | ",
     // Windows limited to one model (Opus, Sonnet, Fable, any added later) are hidden from "limits";
     // the account-wide windows are the ones that stop work. Name one in `segments` to show only it.
@@ -31,6 +31,10 @@ export const DEFAULTS = {
     // usage thresholds: a conversation fills and compacts within a session, so half full is routine.
     memoryWarn: 70,
     memoryDanger: 85,
+    // The cache warning speaks only for a conversation at least this large, from this long before
+    // the cache goes cold. A small conversation re-sends cheaply.
+    cacheWarnTokens: 100000,
+    cacheWarnSecs: 900,
     // Render a window or the memory only when it needs attention: at or over pace, or past its
     // warn threshold.
     hideCalm: false,

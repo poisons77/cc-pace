@@ -66,6 +66,13 @@ export function percent(value) {
     return `${Math.round(value)}%`;
 }
 
+/** Token counts as the eye reads them: 950, 270k, 2.4m. */
+export function tokens(value) {
+    if (value < 1000) return String(Math.round(value));
+    if (value < 1_000_000) return `${Math.round(value / 1000)}k`;
+    return `${(value / 1_000_000).toFixed(1)}m`;
+}
+
 export function ratio(value) {
     return `${value.toFixed(2)}x`;
 }

@@ -39,6 +39,7 @@ SEGMENTS
   Weekly:  71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
   This chat: 35% of burn             this session's share of the last hour's spend
   Memory: 42%                        how full this conversation is (what /compact clears)
+  cache cold in 12m (270k)           a large conversation's prompt cache is about to expire
   Weekly 1h7m to 100% (22:13)        the last hour's rate hits the wall before the reset
   main [*+]                          git branch and working-tree state
 
@@ -73,7 +74,9 @@ async function main() {
 
     if (has("--setup")) {
         const snippet = {
-            statusLine: { type: "command", command: "npx -y claude-code-pace" },
+            // refreshInterval redraws the line while the session is idle, which is when the
+            // cache warning and the countdowns matter.
+            statusLine: { type: "command", command: "npx -y claude-code-pace", refreshInterval: 60 },
         };
         process.stdout.write(`${JSON.stringify(snippet, null, 2)}\n`);
         return;
