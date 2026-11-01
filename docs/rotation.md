@@ -115,7 +115,8 @@ comes first, refills each at its reset, and counts an account never observed as 
 is when all are empty with a reset still ahead (to the quarter hour), `resumesAt` that next reset;
 both are null when the quota lasts the window. Without any worked hour yet, `rate`, `allowed` and
 `workHours` are null and the stop is played from `burn` held around the clock. The status line's
-`pool` segment shows `push +40%` or `slow -24% stop Sat 05:10 → Sun 07:00`, and the older
+`pool` segment shows green `↑40%` or red `↓24% stop Sat 05:10 +26h` (`+26h` is `resumesAt` less
+`runsOutAt`), and the older
 `2.10x/2.0x stop Sat 05:10` while `rate` is null.
 
 **Switching before the wall.** A switch fires only when the status line renders, and a long
