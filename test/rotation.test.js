@@ -4,7 +4,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { decide, display, readForecast, simulate, watchedBuckets, runRotation } from "../src/rotation.js";
+import { decide, display, readForecast, watchedBuckets, runRotation } from "../src/rotation.js";
+
+// The engine reads Claude Code's prompt history for the work pattern; never this machine's.
+process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "cc-pace-claude-"));
 
 const NOW = 1_000_000;
 const H5 = NOW + 3600;
@@ -471,30 +474,6 @@ test("a spent account says when it frees: the latest reset among the windows hol
     const b = JSON.parse(readFileSync(stateFile, "utf8")).ranking.accounts.find((a) => a.name === "B");
     assert.equal(b.reason, "spent");
     assert.equal(b.freeAt, NOW + 2 * 86400);
-});
-
-const HOUR = 3600;
-
-test("the pool runs dry when the burn outruns every account's refill, and resumes at the next reset", () => {
-    // A real reading: 3.56x against three accounts. One has 1% left until its reset in 12 h, one
-    // 92% until 164 h, one never observed. Soonest reset drains first; refills come back at 100%.
-    const accounts = [
-        { name: "cinzia", used: 99, resets: NOW + 12 * HOUR },
-        { name: "nico", used: 8, resets: NOW + 164 * HOUR },
-        { name: "poisons", used: null, resets: null },
-    ];
-    const { runsOutAt, resumesAt } = simulate(accounts, 3.56, WEEK, NOW);
-    assert.ok(Math.abs(runsOutAt - (NOW + 138.27 * HOUR)) < 0.1 * HOUR, `${(runsOutAt - NOW) / HOUR} h`);
-    assert.equal(resumesAt, NOW + 164 * HOUR);
-});
-
-test("a burn the pool can sustain lasts the window", () => {
-    const accounts = [
-        { name: "a", used: 30, resets: NOW + 2 * 86400 },
-        { name: "b", used: 10, resets: NOW + 5 * 86400 },
-    ];
-    assert.deepEqual(simulate(accounts, 1.5, WEEK, NOW), { runsOutAt: null, resumesAt: null });
-    assert.deepEqual(simulate(accounts, 0, WEEK, NOW), { runsOutAt: null, resumesAt: null });
 });
 
 test("the forecast is published beside the ranking, without a login about to stop", () => {

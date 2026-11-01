@@ -90,15 +90,33 @@ room again, the latest reset among the windows holding it. cc-account's `rotate`
 together, last at the current burn.
 
 ```
-{ at, window, burn, sustainable, accounts: [{ name, used, resets }], unknown, runsOutAt, resumesAt }
+{ at, window, burn, sustainable, rate, allowed, workHours,
+  accounts: [{ name, used, resets }], unknown, runsOutAt, resumesAt }
 ```
 
 `window` is `seven_day` when watched, else `five_hour`. `burn` is the live ratio of the active
 account; `sustainable` is how many accounts can be drawn on, since each refills once per window. A
-login about to stop refreshing is left out. The simulation draws on the account whose reset comes
-first, refills each at its reset, and counts an account never observed as full. `runsOutAt` is when
-all are empty with a reset still ahead, `resumesAt` that next reset; both are null when the quota
-lasts the window. The status line's `pool` segment shows it as `2.10x/2.0x stop Sat 05:10`.
+login about to stop refreshing is left out.
+
+The forecast is played over the hours this person works (`src/pool.js`):
+
+- `rate` - what the pool burns per hour of work, in percent of one account. The state file keeps a
+  `ledger` of what the active account spent in each hour for two weeks; a switch or a rolled window
+  starts a new baseline rather than counting as spend. Worked hours are weighted newest first with
+  a three-hour half-life. Until the ledger holds an hour and a half of work, the active account's
+  use this window over the hours worked in it stands in.
+- `workHours` - hours worked per day, from a profile of the share of the last 14 days each hour of
+  the day was worked. Worked means a prompt in Claude Code's `history.jsonl` (read incrementally,
+  timestamps only, kept as `activity`) or the pool burning.
+- `allowed` - the highest `rate` the pool sustains for one window from now.
+
+The simulation burns `rate` scaled by the profile, hour by hour, draws on the account whose reset
+comes first, refills each at its reset, and counts an account never observed as full. `runsOutAt`
+is when all are empty with a reset still ahead (to the quarter hour), `resumesAt` that next reset;
+both are null when the quota lasts the window. Without any worked hour yet, `rate`, `allowed` and
+`workHours` are null and the stop is played from `burn` held around the clock. The status line's
+`pool` segment shows `push +40%` or `slow -24% stop Sat 05:10 → Sun 07:00`, and the older
+`2.10x/2.0x stop Sat 05:10` while `rate` is null.
 
 **Switching before the wall.** A switch fires only when the status line renders, and a long
 subagent run can burn the last few percent between two renders. `switchAheadSecs` makes a window

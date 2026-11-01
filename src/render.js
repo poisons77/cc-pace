@@ -118,13 +118,26 @@ function renderCache(payload, { c, cfg, now }) {
 }
 
 /**
- * Whether the accounts in rotation together last at the current burn: the burn against what the
- * pool sustains (N accounts sustain N.0x), then when it stops, or `ok`. Only with two or more.
+ * Whether the accounts in rotation together last, only with two or more. From the work pattern it
+ * is one instruction: `push +40%` while the pool has room for more, `slow -25%` and when it stops
+ * and refills while it has not. Without one yet, the burn against what the pool sustains (N
+ * accounts sustain N.0x), then the stop or `ok`.
  */
-function renderPool(forecast, { c, now }) {
-    if (!forecast || typeof forecast.burn !== "number" || !(forecast.sustainable >= 2)) return "";
+function renderPool(forecast, { c, cfg, now }) {
+    if (!forecast || !(forecast.sustainable >= 2)) return "";
+    const until = cfg.ascii ? "->" : "→";
+    const stop =
+        typeof forecast.runsOutAt === "number"
+            ? ` stop ${clock(forecast.runsOutAt, now)}${typeof forecast.resumesAt === "number" ? ` ${until} ${clock(forecast.resumesAt, now)}` : ""}`
+            : "";
+    if (forecast.rate > 0 && typeof forecast.allowed === "number") {
+        const margin = Math.round((forecast.allowed / forecast.rate - 1) * 100);
+        if (margin < 0) return `Pool: ${c.red(`slow ${margin}%${stop}`)}`;
+        return `Pool: ${c.green(`push +${Math.min(margin, 999)}%`)}`;
+    }
+    if (typeof forecast.burn !== "number") return "";
     const pace = `${fmtRatio(forecast.burn)}/${forecast.sustainable.toFixed(1)}x`;
-    if (typeof forecast.runsOutAt === "number") return `Pool: ${c.red(`${pace} stop ${clock(forecast.runsOutAt, now)}`)}`;
+    if (stop) return `Pool: ${c.red(`${pace}${stop}`)}`;
     return `Pool: ${c.green(`${pace} ok`)}`;
 }
 

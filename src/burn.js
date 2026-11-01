@@ -34,7 +34,7 @@ const MAX_EXTRAPOLATION = 6;
 // arrives as an implausible jump: 8% then 26% sixty seconds later. Above this rate the earlier
 // sample is treated as stale - the series restarts from the newer reading rather than believing a
 // slope that would drain a whole window in half an hour.
-const IMPLAUSIBLE_PCT_PER_SEC = 100 / (30 * 60);
+export const IMPLAUSIBLE_PCT_PER_SEC = 100 / (30 * 60);
 
 /**
  * Drop everything up to and including the last impossible step, keeping only the trailing run of

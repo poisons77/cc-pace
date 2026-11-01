@@ -11,6 +11,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const BIN = join(HERE, "..", "bin", "cc-pace.js");
 const fixture = (name) => readFileSync(join(HERE, "fixtures", `${name}.json`), "utf8");
 
+// The rotation engine reads Claude Code's prompt history; every child inherits this empty one.
+process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "cc-pace-claude-"));
+
 // Every run gets its own config directory. The CLI writes burn history and runs the rotation
 // engine beside the config file, so a test against the real one would overwrite the user's history
 // and could switch their account.

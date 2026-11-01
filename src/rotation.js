@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { computePace, WINDOW_SECS, windowSecs as windowLength } from "./pace.js";
 import { historyPath, projectWall, readHistory } from "./burn.js";
+import { outlook, promptHistoryPath, readActivity, recordUsage, simulate } from "./pool.js";
 
 // A switch takes a second or two; without a cooldown every render in that gap would spawn again.
 const COOLDOWN_SECS = 45;
@@ -307,61 +308,34 @@ function rankingDue(prior, next, now) {
     return JSON.stringify(prior.accounts) !== JSON.stringify(next.accounts);
 }
 
-const SIMULATION_STEPS = 1000;
+/** The window the pool is judged on: the weekly one when watched, since that is the scarce one. */
+function poolWindow(rule) {
+    return watchedBuckets(rule).some((b) => b.key === "seven_day") ? "seven_day" : "five_hour";
+}
 
 /**
- * Plays the burn forward across the pool for one window. The burn always draws from the account
- * with room whose reset comes first - its leftover is lost at that reset - and each account refills
- * at its reset. Returns when every account is empty with a reset still ahead, or nulls when the
- * quota lasts the window.
- *
- * @param {{used:number|null, resets:number|null}[]} accounts Never observed counts as full,
- *   refilling a whole window from now - the most it can hold back.
- * @param {number} burn Multiple of one account's even pace.
+ * Files what the pool spent and when this person worked, for the forecast. Returns the same state
+ * when neither moved, so an unchanged render writes nothing.
  */
-export function simulate(accounts, burn, windowSecs, now) {
-    const lasts = { runsOutAt: null, resumesAt: null };
-    const rate = (burn * 100) / windowSecs;
-    if (!(rate > 0)) return lasts;
-    const pool = accounts.map((a) => ({
-        left: a.used === null ? 100 : Math.max(0, 100 - a.used),
-        resets: a.resets ?? now + windowSecs,
-    }));
-    if (pool.length === 0) return lasts;
-
-    let t = now;
-    for (let step = 0; step < SIMULATION_STEPS && t < now + windowSecs; step++) {
-        const nextReset = Math.min(...pool.map((a) => a.resets));
-        const drawing = pool.filter((a) => a.left > 0).sort((a, b) => a.resets - b.resets)[0];
-        if (!drawing) return { runsOutAt: Math.round(t), resumesAt: nextReset };
-        const emptyAt = t + drawing.left / rate;
-        if (emptyAt < nextReset) {
-            drawing.left = 0;
-            t = emptyAt;
-            continue;
-        }
-        drawing.left -= rate * (nextReset - t);
-        t = nextReset;
-        for (const a of pool) {
-            if (a.resets <= t) {
-                a.left = 100;
-                a.resets += windowSecs;
-            }
-        }
-    }
-    return lasts;
+function trackPool(state, active, limits, rule, now) {
+    const ledger = recordUsage(state.ledger, rotationAccounts(rule).includes(active) ? active : null, limits?.[poolWindow(rule)], now);
+    const activity = readActivity(state.activity, promptHistoryPath(), now);
+    if (ledger === state.ledger && activity === state.activity) return state;
+    return { ...state, ledger, activity };
 }
 
 /**
  * Whether the accounts in rotation, together, last at the current burn - published for cc-account
  * beside the ranking. The judgement stays here; cc-account only displays it.
  *
- * `sustainable` is how many accounts can be drawn on: each refills once per window, so N of them
- * sustain a burn of N.0x. An account whose login is about to stop refreshing is not counted.
+ * `burn` is the active account's window pace and `sustainable` how many accounts can be drawn on:
+ * each refills once per window, so N of them sustain N.0x. An account whose login is about to stop
+ * refreshing is not counted. `rate` and `allowed` are the pool's burn per hour of work and the most
+ * it sustains, and the stop and refill are played forward from them over the hours this person
+ * works; without a work pattern yet, from `burn` held around the clock.
  */
 function forecast(rule, state, logins, limits, now) {
-    const keys = watchedBuckets(rule).map((b) => b.key);
-    const window = keys.includes("seven_day") ? "seven_day" : "five_hour";
+    const window = poolWindow(rule);
     const secs = WINDOW_SECS[window];
     const names = rotationAccounts(rule).filter((name) => !loginDead(logins, name, now));
 
@@ -372,12 +346,17 @@ function forecast(rule, state, logins, limits, now) {
         const seen = current(state?.seen?.[name]?.buckets?.[window], secs, now);
         return { name, used: seen ? Math.round(seen.used) : null, resets: seen?.resets ?? null };
     });
-    const { runsOutAt, resumesAt } = burn === null ? { runsOutAt: null, resumesAt: null } : simulate(accounts, burn, secs, now);
+    const work = outlook({ accounts, ledger: state?.ledger, activity: state?.activity, limit: limits?.[window], windowSecs: secs, now });
+    const flat = () => (burn > 0 ? simulate(accounts, () => (burn * 100) / secs, secs, now) : { runsOutAt: null, resumesAt: null });
+    const { runsOutAt, resumesAt } = work ?? flat();
     return {
         at: now,
         window,
         burn,
         sustainable: names.length,
+        rate: work?.rate ?? null,
+        allowed: work?.allowed ?? null,
+        workHours: work?.workHours ?? null,
         accounts,
         unknown: accounts.filter((a) => a.used === null).map((a) => a.name),
         runsOutAt,
@@ -629,7 +608,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
 
         // A render that only files a reading still has something new to save, and the checks below
         // compare against the post-observation state - so the change is tracked here or not at all.
-        let observed = observe(state, active, limits, rule, nowSecs);
+        let observed = trackPool(observe(state, active, limits, rule, nowSecs), active, limits, rule, nowSecs);
         const ranking = publishedRanking(rankAccounts(rule, observed, logins, nowSecs), nowSecs);
         const outlook = forecast(rule, observed, logins, limits, nowSecs);
         // The forecast moves with the burn, more often than the ranking; each is rewritten when its
@@ -712,6 +691,8 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             // cc-account reads the ranking during the switch too, so it survives like the ledger.
             ranking: state.ranking,
             forecast: state.forecast,
+            ledger: state.ledger,
+            activity: state.activity,
             because: hit.because ?? null,
             fallbackExhausted: false,
             held: null,

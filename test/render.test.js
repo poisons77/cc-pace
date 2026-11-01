@@ -238,13 +238,24 @@ test("the cache warning stays quiet with time to spare, a small conversation, or
     assert.equal(cacheLine(undefined), "");
 });
 
-test("the pool forecast reads as the burn against what the pool sustains, then stop or ok", () => {
-    const at = (pool) => render({}, { color: false, now: 1800000000, config: { ...DEFAULTS, segments: ["pool"] }, notes: { pool } });
+const poolLine = (pool, config = {}) =>
+    render({}, { color: false, now: 1800000000, config: { ...DEFAULTS, segments: ["pool"], ...config }, notes: { pool } });
+
+test("without a work pattern the pool reads as the burn against what it sustains, then stop or ok", () => {
     const short = { burn: 3.56, sustainable: 3, runsOutAt: 1800000000 + 138 * 3600, resumesAt: 1800000000 + 164 * 3600 };
-    assert.equal(at(short), "Pool: 3.56x/3.0x stop Thu 02:00");
-    assert.equal(at({ ...short, burn: 1.2, runsOutAt: null }), "Pool: 1.20x/3.0x ok");
-    assert.equal(at({ ...short, burn: null }), "", "no burn yet");
-    assert.equal(at({ ...short, sustainable: 1 }), "", "one account is no pool");
+    assert.equal(poolLine(short), "Pool: 3.56x/3.0x stop Thu 02:00 → Fri 04:00");
+    assert.equal(poolLine(short, { ascii: true }), "Pool: 3.56x/3.0x stop Thu 02:00 -> Fri 04:00");
+    assert.equal(poolLine({ ...short, burn: 1.2, runsOutAt: null }), "Pool: 1.20x/3.0x ok");
+    assert.equal(poolLine({ ...short, burn: null, runsOutAt: null }), "", "no burn yet");
+    assert.equal(poolLine({ ...short, sustainable: 1 }), "", "one account is no pool");
+});
+
+test("with a work pattern the pool says how far to push or slow down", () => {
+    const pool = { burn: 4.17, sustainable: 3, rate: 2.5, allowed: 3.5, runsOutAt: null, resumesAt: null };
+    assert.equal(poolLine(pool), "Pool: push +40%");
+    const over = { ...pool, allowed: 1.9, runsOutAt: 1800000000 + 138 * 3600, resumesAt: 1800000000 + 164 * 3600 };
+    assert.equal(poolLine(over), "Pool: slow -24% stop Thu 02:00 → Fri 04:00");
+    assert.equal(poolLine({ ...pool, allowed: 50, rate: 0.1 }), "Pool: push +999%", "capped");
 });
 
 test("a config that failed to load is flagged at the end of the line", () => {
