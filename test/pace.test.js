@@ -16,6 +16,13 @@ test("elapsed percentage is derived from the window, not from history", () => {
     assert.equal(p.elapsedPct.toFixed(2), "71.43");
 });
 
+test("a young window shows its ratio only once enough time has passed or enough has been spent", () => {
+    const left = 6 * 86400 + 19 * 3600; // 6d19h left: ~3% of the week elapsed
+    assert.equal(computePace(weekly(1, left), WEEK, NOW).reliable, false);
+    assert.equal(computePace(weekly(12, left), WEEK, NOW).reliable, true);
+    assert.equal(computePace(weekly(1, WEEK * 0.9), WEEK, NOW).reliable, true);
+});
+
 test("ratio of 1 means usage exactly tracks the budget", () => {
     const p = computePace(weekly(50, WEEK / 2), WEEK, NOW);
     assert.equal(p.ratio.toFixed(3), "1.000");

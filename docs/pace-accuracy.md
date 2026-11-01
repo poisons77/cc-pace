@@ -30,6 +30,10 @@ still show. Five percent is 8.4 hours into a week, 15 minutes into a 5-hour wind
 absolute error in `used%` swamps the ratio. At 2% the number still swung: three hours into a week,
 7% used read `3.29x` - correct, but moved by every percent.
 
+**Once `used%` itself reaches `minElapsedPct`, the ratio shows however young the window is.** The
+noise comes from one or two rounded percent; 12% used three percent into the week is a real 4x
+burn, and hiding it for the first eight hours hides exactly the week that needs the warning.
+
 `--json` reports `pace_reliable` so downstream consumers can tell suppression from absence.
 
 ## Late: the average hides a recent burst

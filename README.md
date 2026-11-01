@@ -155,8 +155,9 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   only past `memoryWarn`. The line then carries only what needs attention.
 - `paceOn` - which buckets get the ratio and ETA. Add `"five_hour"` to pace the session too.
 - `eta` - `when-early` (default), `always`, or `never`.
-- `minElapsedPct` - how much of a window must have elapsed before its ratio is shown. Below it the
-  denominator is near zero and the number is noise.
+- `minElapsedPct` - how much of a window must have elapsed, or been used, before its ratio is
+  shown. Below both the denominator is near zero and the number is noise; a heavy early burn
+  (12% used 3% into the week) shows at once.
 - `ascii` - use `v`/`^` instead of `↓`/`↑` for fonts without the arrows.
 
 Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `CC_PACE_ASCII`,
@@ -281,7 +282,7 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 127 tests, node:test, no dependencies
+npm test        # 128 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```

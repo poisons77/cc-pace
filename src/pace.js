@@ -23,8 +23,9 @@ export function windowSecs(key) {
 // Minutes into a week-long window, `elapsedPct` is a fraction of a percent, so the ratio divides
 // by something close to zero: one percent used three minutes in reads as 47x, and the projected
 // depletion lands the same evening. The early number is an artifact of the small denominator, not
-// a signal, so callers are told when it is too young to show. 5% of a week is ~8 h: a real reading
-// three hours in showed 3.29x at 7% used - correct, but swinging with every percent.
+// a signal, so callers are told when it is too young to show. 5% of a week is ~8 h. The same 5% of
+// the budget already spent makes the reading real however young the window: 12% used three percent
+// into the week is a 4x burn the line has to show, while one percent used is the rounding artifact.
 export const MIN_ELAPSED_PCT = 5;
 
 /**
@@ -67,7 +68,7 @@ export function computePace(limit, windowSecs, nowSecs, { minElapsedPct = MIN_EL
         depletesBeforeReset: depletesAt !== null && depletesAt < limit.resets_at,
         safeRatePerDay,
         resetsAt: limit.resets_at,
-        reliable: elapsedPct >= minElapsedPct,
+        reliable: elapsedPct >= minElapsedPct || usedPct >= minElapsedPct,
     };
 }
 
