@@ -43,7 +43,7 @@ test("--help documents the pace ratio", () => {
 });
 
 test("--demo renders without stdin", () => {
-    assert.match(run(["--demo"]), /Weekly: 71%/);
+    assert.match(run(["--demo"]), /Week: 71%/);
 });
 
 test("--dump round-trips the payload as readable JSON", () => {
@@ -86,7 +86,7 @@ test("--config reports the resolved configuration", () => {
 
 test("environment overrides reach the renderer", () => {
     const out = run([], fixture("on-pace"), { env: { CC_PACE_SEGMENTS: "weekly" } });
-    assert.equal(out, "Weekly: 71% (2d0h) 0.99x");
+    assert.equal(out, "Week: 71% (2d0h) 0.99x");
 });
 
 // A weekly window climbing 10 points in half an hour: the window average looks fine, the recent
@@ -103,7 +103,7 @@ test("the burn warning comes from history the CLI records across renders", () =>
 
     const t0 = 1800000000;
     assert.equal(at(t0, 50), "", "one sample carries no rate");
-    assert.equal(at(t0 + 1800, 60), "Weekly 2h0m to 100% (10:30)");
+    assert.equal(at(t0 + 1800, 60), "Week 2h0m to 100% (10:30)");
     assert.ok(existsSync(join(dir, "burn-history.json")));
 });
 

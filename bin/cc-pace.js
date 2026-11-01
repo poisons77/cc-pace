@@ -37,12 +37,12 @@ OPTIONS
 
 SEGMENTS
   Session: 12% (4h37m)               5-hour rolling window
-  Weekly:  71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
-  Pool: 35% ↓22% stop Fri 17:45 +37h   this session's share of the last hour's spend; with
+  Week:    71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
+  Pool: 35% ↓22% stop Fri 17:45 -37h   this session's share of the last hour's spend; with
                                      rotation, ↑ push / ↓ slow down, and when all accounts run dry
   Cache: 42% cold in 12m (270k)      how full this conversation is (what /compact clears), and
                                      a warning before a large prompt cache expires
-  Weekly 1h7m to 100% (22:13)        the last hour's rate hits the wall before the reset
+  Week 1h7m to 100% (22:13)      the last hour's rate hits the wall before the reset
   main [*+]                          git branch and working-tree state
   (chain)                            the output of another statusline, set with "chain" in config
 

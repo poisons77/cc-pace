@@ -12,7 +12,7 @@ knowing which is which explains what the status line shows.
 Minutes into a 7-day window, `elapsed%` is a fraction of a percent. Real reading:
 
 ```
-Weekly: 1% (6d23h) 46.88x Tue 20:35
+Week: 1% (6d23h) 46.88x Tue 20:35
 ```
 
 Three minutes in, 1.4% used:
@@ -42,13 +42,13 @@ The ratio is cumulative over the whole window, so it cannot see a quiet week fol
 hour. Real reading:
 
 ```
-Weekly: 80% (4d9h) 2.16x Wed 12:37 | Weekly 1h7m to 100% (22:13)
+Week: 80% (4d9h) 2.16x Wed 12:37 | Week 1h7m to 100% (22:13)
 ```
 
 | | Says |
 |---|---|
 | `2.16x Wed 12:37` | averaged over the window, exhausted Wednesday midday |
-| `Weekly 1h7m to 100% (22:13)` | at the last hour's rate, exhausted tonight |
+| `Week 1h7m to 100% (22:13)` | at the last hour's rate, exhausted tonight |
 
 Cumulative burn there was ~1.27%/hour; the recent rate was ~18%/hour - **14× higher**. The average
 is not wrong, it answers a different question: *am I on budget for the week*, rather than *when do
@@ -76,7 +76,7 @@ Half an hour of samples describes half an hour of behaviour. Real reading, 28% u
 window with 5 days left:
 
 ```
-Weekly: 28% (5d5h) 1.11x | 16h46m to 100%
+Week: 28% (5d5h) 1.11x | 16h46m to 100%
 ```
 
 The 4.29%/hour was measured correctly - two agents running hard do burn that fast. The projection

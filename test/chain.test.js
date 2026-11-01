@@ -45,5 +45,5 @@ test("the CLI joins the chained statusline at the end of its own line", () => {
         encoding: "utf8",
         env: { ...process.env, NO_COLOR: "1", TZ: "UTC", CC_PACE_CONFIG: config, CLAUDE_CONFIG_DIR: dir },
     });
-    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | model Fable | second");
+    assert.equal(out, "Week: 71% (2d0h) 0.99x | model Fable | second");
 });

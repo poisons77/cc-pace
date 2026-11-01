@@ -126,13 +126,13 @@ function renderCache(payload, ctx) {
  * Whether the accounts in rotation together last, only with two or more. From the work pattern it
  * is one instruction: a green up arrow and how much faster the pool allows (`↑40%`), or a red down
  * arrow and how much to ease off (`↓25%`) with when it stops and for how long (`stop Fri 19:15
- * +36h`). Without one yet, the burn against what the pool sustains (N accounts sustain N.0x), then
+ * -36h`). Without one yet, the burn against what the pool sustains (N accounts sustain N.0x), then
  * the stop or `ok`.
  */
 function poolOutlook(forecast, { c, cfg, now }) {
     if (!forecast || !(forecast.sustainable >= 2)) return "";
     const gap =
-        typeof forecast.resumesAt === "number" ? ` +${Math.round((forecast.resumesAt - forecast.runsOutAt) / 3600)}h` : "";
+        typeof forecast.resumesAt === "number" ? ` -${Math.round((forecast.resumesAt - forecast.runsOutAt) / 3600)}h` : "";
     const stop = typeof forecast.runsOutAt === "number" ? ` stop ${clock(forecast.runsOutAt, now)}${gap}` : "";
     if (forecast.rate > 0 && typeof forecast.allowed === "number") {
         const margin = Math.round((forecast.allowed / forecast.rate - 1) * 100);

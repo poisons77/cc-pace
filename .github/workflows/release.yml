@@ -38,7 +38,7 @@ jobs:
           npm pack
           mkdir -p packtest
           tar -xzf claude-code-pace-*.tgz -C packtest
-          node packtest/package/bin/cc-pace.js --demo --no-color | grep -q "Weekly: 71%"
+          node packtest/package/bin/cc-pace.js --demo --no-color | grep -q "Week: 71%"
       # A version already on the registry was published by hand; re-running must not turn red.
       - name: Publish
         run: |

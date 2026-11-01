@@ -75,15 +75,15 @@ then is a ratio of `0.99` - dead on target.
 | `> 1.10` | red | the window depletes before it resets |
 
 The ETA is the projected moment usage reaches 100% at the current average rate. When the ratio is
-red, the model and its settings follow it - `1.26x Fri 21:20 Opus 5/high +think` - because the
+red, the model and its settings follow it - `1.26x Fri 21:20 Opus 5/high+` (`+` is thinking) - because the
 model is usually the cause and the thing to change. When subagents spend on other models, each
-model's share of the session's recent spend follows too: `Opus 5.5/medium 71% · Sonnet 5.5 27%`.
+model's share of the session's recent spend follows too: `Opus 5.5/med 71% · Sonnet 5.5 27%`.
 The shares come from the session's transcripts, priced per model, so they match what `/usage`
 reports.
 
 An average over the whole window cannot see a burst: a quiet week hides a hard hour. The `burn`
 segment measures the rate over roughly the last hour and speaks only when that rate hits 100% before
-the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings from idle sessions:
+the reset - `Week 1h7m to 100% (22:13)`. How it guards against stale readings from idle sessions:
 [`docs/pace-accuracy.md`](docs/pace-accuracy.md).
 
 ## Segments
@@ -91,9 +91,9 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | Segment | Source |
 | --- | --- |
 | `Session` | `rate_limits.five_hour` - 5-hour rolling window |
-| `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
+| `Week` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
 | `Opus` / `Sonnet` / `Fable` | a model's own weekly window, such as `seven_day_fable`, when your plan reports it. Hidden unless `showModelWindows` is on; any model added later is labelled and paced the same way |
-| `Pool` | `Pool: 35% ↓24% stop Sat 05:10 +26h`. First, this session's share of what all open sessions spent in the last hour, shown once a second session is burning. Then, with account rotation, whether the accounts together last at your working pace - green `↑40%` to push, red `↓24%` to slow down, with when they run dry and for how many hours - see [With cc-account](#with-cc-account) |
+| `Pool` | `Pool: 35% ↓24% stop Sat 05:10 -26h`. First, this session's share of what all open sessions spent in the last hour, shown once a second session is burning. Then, with account rotation, whether the accounts together last at your working pace - green `↑40%` to push, red `↓24%` to slow down, with when they run dry and for how many hours - see [With cc-account](#with-cc-account) |
 | `Cache` | `Cache: 42% cold in 12m (270k)`. First, how full this conversation is - what the prompt cache holds and `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything. Then `cold in 12m (270k)`, or `cold, next turn re-sends 270k` once expired: a conversation of at least 100k tokens whose prompt cache is within 15 minutes of expiring. Past expiry, the next turn re-sends the whole conversation as cache writes, which can cost more than an hour of work; `/compact` before a break avoids it. From `prompt_cache` in the payload (Claude Code 2.1.251+) |
 | burn | the recent-rate warning above; empty while the recent rate is safe |
 | rotation | account-switch status, when `rotation` is configured - see below |
@@ -190,8 +190,8 @@ With `work` and `personal` in rotation, the line also says whether the two toget
 to do about it:
 
 ```
-Weekly: 80% (3d0h) 1.40x | Pool: ↑40%
-Weekly: 90% (4d0h) 2.10x | Pool: ↓24% stop Sat 05:10 +26h
+Week: 80% (3d0h) 1.40x | Pool: ↑40%
+Week: 90% (4d0h) 2.10x | Pool: ↓24% stop Sat 05:10 -26h
 ```
 
 The pool forecast follows how you work, not the clock. It measures what the pool burns per hour of
@@ -200,7 +200,7 @@ Code's own prompt history (timestamps only), so nights you sleep are not project
 then plays that forward - always drawing on the account whose reset comes first, since what it
 holds at its reset is lost - and finds the most you can burn per working hour and still last.
 - green `↑40%` - you can push: the pool lasts even 40% faster than your current pace.
-- red `↓24%` - slow down by 24% to last. `stop Sat 05:10 +26h` is when every account runs dry at
+- red `↓24%` - slow down by 24% to last. `stop Sat 05:10 -26h` is when every account runs dry at
   your current pace, and how many hours until the first one refills.
 
 The pool assumes the accounts are on the same plan.
@@ -247,8 +247,8 @@ account, waits out the settle window after a move, and reports the outcome in th
 ```
 
 ```
-Session: 95% (2h18m) | Weekly: 67% (4d20h) | → switching to personal
-Session: 2% (5h0m)   | Weekly: 61% (4d2h)  | ✓ on personal
+Session: 95% (2h18m) | Week: 67% (4d20h) | → switching to personal
+Session: 2% (5h0m)   | Week: 61% (4d2h)  | ✓ on personal
 ```
 
 Name `primary` and `fallback` instead of `accounts` for a reserve account you return to rather than

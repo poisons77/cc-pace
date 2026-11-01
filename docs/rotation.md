@@ -115,7 +115,7 @@ comes first, refills each at its reset, and counts an account never observed as 
 is when all are empty with a reset still ahead (to the quarter hour), `resumesAt` that next reset;
 both are null when the quota lasts the window. Without any worked hour yet, `rate`, `allowed` and
 `workHours` are null and the stop is played from `burn` held around the clock. The status line's
-`pool` segment shows green `↑40%` or red `↓24% stop Sat 05:10 +26h` (`+26h` is `resumesAt` less
+`pool` segment shows green `↑40%` or red `↓24% stop Sat 05:10 -26h` (`-26h` is `resumesAt` less
 `runsOutAt`), and the older
 `2.10x/2.0x stop Sat 05:10` while `rate` is null.
 
@@ -166,10 +166,10 @@ of inferred from file timestamps.
 ## Status line
 
 ```
-Session: 95% (2h18m) | Weekly: 67% (4d20h) | → switching to personal
-Session: 4% (58m)    | Weekly: 99% (6d18h) | ! all limited · work in 4d20h
-Session: 2% (5h0m)   | Weekly: 61% (4d2h)  | ✓ on personal
-Session: 4% (58m)    | Weekly: 99% (6d18h) | ! switch to work failed
+Session: 95% (2h18m) | Week: 67% (4d20h) | → switching to personal
+Session: 4% (58m)    | Week: 99% (6d18h) | ! all limited · work in 4d20h
+Session: 2% (5h0m)   | Week: 61% (4d2h)  | ✓ on personal
+Session: 4% (58m)    | Week: 99% (6d18h) | ! switch to work failed
 ```
 
 With `primary` and `fallback`, two more appear: `↩ work in 2h19m` while waiting out the primary's

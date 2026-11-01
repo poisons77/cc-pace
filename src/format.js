@@ -6,7 +6,7 @@ import { modelOf } from "./pace.js";
 // and the burn warning name a bucket from here, so one bucket reads the same wherever it appears.
 export const LABELS = {
     five_hour: "Session",
-    seven_day: "Weekly",
+    seven_day: "Week",
 };
 
 const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -80,21 +80,25 @@ export function ratio(value) {
 // A model below this share of the session's spend is left out of the mix.
 const MIX_FLOOR_PCT = 5;
 
+// Effort levels as the line spells them; any other level is shown as sent.
+const EFFORT = { medium: "med" };
+
 /**
- * What the session is burning with: "Opus 5/high +think +fast". Shown beside a ratio that is over
- * budget, it turns "too fast" into a cause and so into an action. Every field is optional.
+ * What the session is burning with: "Opus 5/high+ +fast", the `+` right after the effort marking
+ * thinking. Shown beside a ratio that is over budget, it turns "too fast" into a cause and so into
+ * an action. Every field is optional.
  *
  * With `mix` - each model's share of the session's spend, subagents included - and a second model
- * worth naming, the shares follow: "Opus 5.5/medium +think 71% · Sonnet 5.5 29%". The settings
- * describe the main conversation's model only; the payload has none for a subagent's.
+ * worth naming, the shares follow: "Opus 5.5/med+ 71% · Sonnet 5.5 29%". The settings describe the
+ * main conversation's model only; the payload has none for a subagent's.
  */
 export function cause(payload, mix = []) {
     const name = payload?.model?.display_name || payload?.model?.id;
     if (typeof name !== "string" || !name) return "";
     let out = name;
     const effort = payload?.effort?.level;
-    if (typeof effort === "string" && effort) out += `/${effort}`;
-    if (payload?.thinking?.enabled === true) out += " +think";
+    if (typeof effort === "string" && effort) out += `/${EFFORT[effort] ?? effort}`;
+    if (payload?.thinking?.enabled === true) out += "+";
     if (payload?.fast_mode === true) out += " +fast";
 
     const named = (mix ?? []).filter((m) => m.share >= MIX_FLOOR_PCT);
