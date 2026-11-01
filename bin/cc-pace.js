@@ -38,6 +38,7 @@ OPTIONS
 SEGMENTS
   Session: 12% (4h37m)               5-hour rolling window
   Weekly:  71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
+  Pool: 3.56x/3.0x stop Sat 05:10    with rotation: whether all accounts together last the burn
   This chat: 35% of burn             this session's share of the last hour's spend
   Memory: 42%                        how full this conversation is (what /compact clears)
   cache cold in 12m (270k)           a large conversation's prompt cache is about to expire
@@ -131,6 +132,7 @@ async function main() {
     const rotating = live && config.rotation && config.rotation.enabled !== false;
     const rotation = rotating ? await import("../src/rotation.js") : null;
     const rotationText = rotation && config.segments.includes("rotation") ? rotation.readDisplay(file) : null;
+    const pool = rotation && config.segments.includes("pool") ? rotation.readForecast(file) : null;
 
     process.stdout.write(
         render(payload, {
@@ -138,7 +140,7 @@ async function main() {
             config,
             git,
             now,
-            notes: { burn, rotation: rotationText, share, mix },
+            notes: { burn, rotation: rotationText, share, mix, pool },
         }),
     );
 

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { decide, display, watchedBuckets, runRotation } from "../src/rotation.js";
+import { decide, display, readForecast, simulate, watchedBuckets, runRotation } from "../src/rotation.js";
 
 const NOW = 1_000_000;
 const H5 = NOW + 3600;
@@ -471,6 +471,56 @@ test("a spent account says when it frees: the latest reset among the windows hol
     const b = JSON.parse(readFileSync(stateFile, "utf8")).ranking.accounts.find((a) => a.name === "B");
     assert.equal(b.reason, "spent");
     assert.equal(b.freeAt, NOW + 2 * 86400);
+});
+
+const HOUR = 3600;
+
+test("the pool runs dry when the burn outruns every account's refill, and resumes at the next reset", () => {
+    // A real reading: 3.56x against three accounts. One has 1% left until its reset in 12 h, one
+    // 92% until 164 h, one never observed. Soonest reset drains first; refills come back at 100%.
+    const accounts = [
+        { name: "cinzia", used: 99, resets: NOW + 12 * HOUR },
+        { name: "nico", used: 8, resets: NOW + 164 * HOUR },
+        { name: "poisons", used: null, resets: null },
+    ];
+    const { runsOutAt, resumesAt } = simulate(accounts, 3.56, WEEK, NOW);
+    assert.ok(Math.abs(runsOutAt - (NOW + 138.27 * HOUR)) < 0.1 * HOUR, `${(runsOutAt - NOW) / HOUR} h`);
+    assert.equal(resumesAt, NOW + 164 * HOUR);
+});
+
+test("a burn the pool can sustain lasts the window", () => {
+    const accounts = [
+        { name: "a", used: 30, resets: NOW + 2 * 86400 },
+        { name: "b", used: 10, resets: NOW + 5 * 86400 },
+    ];
+    assert.deepEqual(simulate(accounts, 1.5, WEEK, NOW), { runsOutAt: null, resumesAt: null });
+    assert.deepEqual(simulate(accounts, 0, WEEK, NOW), { runsOutAt: null, resumesAt: null });
+});
+
+test("the forecast is published beside the ranking, without a login about to stop", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-forecast-"));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+
+    const weekly = { accounts: ["A", "B", "C"], buckets: { seven_day: 99 }, store, command: "node -e 0", log: false };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0, logins: { C: NOW } }));
+    writeFileSync(stateFile, JSON.stringify({ seen: { B: { at: NOW, buckets: { seven_day: { used: 50, resets: NOW + 2 * 86400 } } } } }));
+
+    // Four days into A's week at 80%: 1.40x of one account's pace.
+    const live = { seven_day: { used_percentage: 80, resets_at: NOW + 3 * 86400 } };
+    runRotation(live, weekly, configFile, NOW);
+    const forecast = readForecast(configFile);
+    assert.equal(forecast.window, "seven_day");
+    assert.equal(forecast.burn, 1.4);
+    assert.equal(forecast.sustainable, 2, "C's login stops within the hour");
+    assert.deepEqual(forecast.accounts, [
+        { name: "A", used: 80, resets: NOW + 3 * 86400 },
+        { name: "B", used: 50, resets: NOW + 2 * 86400 },
+    ]);
+    assert.deepEqual(forecast.unknown, []);
+    assert.equal(forecast.runsOutAt, null, "1.40x against 2.0x lasts");
 });
 
 test("a burn that hits the wall before the next render forces the switch early", () => {

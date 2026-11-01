@@ -89,6 +89,7 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | `Session` | `rate_limits.five_hour` - 5-hour rolling window |
 | `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
 | `Opus` / `Sonnet` / `Fable` | a model's own weekly window, such as `seven_day_fable`, when your plan reports it. Hidden unless `showModelWindows` is on; any model added later is labelled and paced the same way |
+| `Pool` | with account rotation: the burn against what the accounts together sustain, then `ok` or when they all run out - see [With cc-account](#with-cc-account) |
 | `This chat` | this session's share of what all open sessions spent in the last hour, e.g. `This chat: 35% of burn`; shown once a second session is burning |
 | `Memory` | how full this conversation is - what `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything |
 | cache | `cache cold in 12m (270k)`, then `cache cold: next turn re-sends 270k` - a conversation of at least 100k tokens whose prompt cache is within 15 minutes of expiring. Past expiry, the next turn re-sends the whole conversation as cache writes, which can cost more than an hour of work; `/compact` before a break avoids it. From `prompt_cache` in the payload (Claude Code 2.1.251+) |
@@ -122,7 +123,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 ```json
 {
-  "segments": ["limits", "share", "memory", "cache", "burn", "rotation", "git"],
+  "segments": ["limits", "pool", "share", "memory", "cache", "burn", "rotation", "git"],
   "separator": " | ",
   "hideCalm": false,
   "showModelWindows": false,
@@ -157,18 +158,27 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `CC_PACE_ASCII`,
 `CC_PACE_CONFIG`, `NO_COLOR`.
 
-## Switching accounts when a window runs dry
+## With cc-account
 
-cc-pace only ever reports. Knowing the weekly window dies Friday does not move you off it, and the
-statusline payload carries no account identity, so cc-pace cannot even name the account it is
-describing. Acting on the number is a separate job, and it belongs to
-[cc-account](https://github.com/poisons77/cc-account), which replays a saved OAuth token to switch
-the active account without a browser login.
+cc-pace works alone: pace, burn, memory, cache and share need nothing else.
 
-Each tool stands alone. cc-pace is a statusline whether or not you own a second account, and
-cc-account switches on demand whether or not anything watches the limits. Together they close the
-loop: cc-pace decides *when*, cc-account performs the switch and publishes *who* is now live, which
-is the identity cc-pace could not otherwise see.
+Installed with [cc-account](https://github.com/poisons77/cc-account), it also switches accounts by
+itself. cc-pace watches usage and decides where to go; cc-account switches and keeps logins alive.
+The statusline payload carries no account identity, so cc-pace cannot name the account it
+describes - cc-account publishes which one is live and when each login stops refreshing, and
+cc-pace never switches into one about to log out.
+
+With `work` and `personal` in rotation, the line also says whether the two together last:
+
+```
+Weekly: 80% (3d0h) 1.40x | Pool: 1.40x/2.0x ok
+Weekly: 90% (4d0h) 2.10x | Pool: 2.10x/2.0x stop Sat 05:10
+```
+
+Each account refills once per window, so two sustain 2.0x. Past that, the forecast plays the burn
+forward - always drawing on the account whose reset comes first, since what it holds at its reset
+is lost - and names when every account is empty. The pool assumes the accounts are on the same
+plan.
 
 Install it alongside cc-pace:
 

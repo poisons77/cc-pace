@@ -86,6 +86,20 @@ The engine publishes that order as `ranking` in its state file, every account be
 `eligible`, `reason` (`login` or `spent`), `room`, `spare` and `freeAt` - when a spent account gets
 room again, the latest reset among the windows holding it. cc-account's `rotate` reads it.
 
+**Forecast.** Beside the ranking the engine publishes `forecast`: whether the accounts in rotation,
+together, last at the current burn.
+
+```
+{ at, window, burn, sustainable, accounts: [{ name, used, resets }], unknown, runsOutAt, resumesAt }
+```
+
+`window` is `seven_day` when watched, else `five_hour`. `burn` is the live ratio of the active
+account; `sustainable` is how many accounts can be drawn on, since each refills once per window. A
+login about to stop refreshing is left out. The simulation draws on the account whose reset comes
+first, refills each at its reset, and counts an account never observed as full. `runsOutAt` is when
+all are empty with a reset still ahead, `resumesAt` that next reset; both are null when the quota
+lasts the window. The status line's `pool` segment shows it as `2.10x/2.0x stop Sat 05:10`.
+
 **Switching before the wall.** A switch fires only when the status line renders, and a long
 subagent run can burn the last few percent between two renders. `switchAheadSecs` makes a window
 count as spent once its recent burn rate reaches 100% within that many seconds; the log marks such

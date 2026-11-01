@@ -230,17 +230,24 @@ function freeAt(seen, rule, now) {
  * counts as unused. Only windows a week or longer count - a 5-hour window refills the same day and
  * loses nothing worth ranking on. Null when nothing weekly is watched or ever seen.
  */
+/**
+ * A seen window as it stands now: one whose reset has passed has refilled, so its reset moves
+ * forward by whole windows and it counts as unused. Null when never seen.
+ */
+function current(bucket, windowSecs, now) {
+    if (!bucket || typeof bucket.resets !== "number") return null;
+    if (bucket.resets > now) return { used: bucket.used, resets: bucket.resets };
+    return { used: 0, resets: bucket.resets + Math.ceil((now - bucket.resets + 1) / windowSecs) * windowSecs };
+}
+
 function spare(seen, rule, now) {
     let tightest = null;
     for (const { key } of watchedBuckets(rule)) {
         const windowSecs = windowLength(key);
-        const bucket = seen?.buckets?.[key];
-        if (!(windowSecs >= WINDOW_SECS.seven_day) || !bucket || typeof bucket.resets !== "number") continue;
-        let { used, resets } = bucket;
-        if (resets <= now) {
-            resets += Math.ceil((now - resets + 1) / windowSecs) * windowSecs;
-            used = 0;
-        }
+        if (!(windowSecs >= WINDOW_SECS.seven_day)) continue;
+        const reading = current(seen?.buckets?.[key], windowSecs, now);
+        if (!reading) continue;
+        const { used, resets } = reading;
         const p = computePace({ used_percentage: used, resets_at: resets }, windowSecs, now);
         if (!p) continue;
         const value = p.elapsedPct - used;
@@ -298,6 +305,97 @@ function rankingDue(prior, next, now) {
     if (!prior || !Array.isArray(prior.accounts)) return true;
     if (now - (prior.at ?? 0) >= RANKING_REFRESH_SECS) return true;
     return JSON.stringify(prior.accounts) !== JSON.stringify(next.accounts);
+}
+
+const SIMULATION_STEPS = 1000;
+
+/**
+ * Plays the burn forward across the pool for one window. The burn always draws from the account
+ * with room whose reset comes first - its leftover is lost at that reset - and each account refills
+ * at its reset. Returns when every account is empty with a reset still ahead, or nulls when the
+ * quota lasts the window.
+ *
+ * @param {{used:number|null, resets:number|null}[]} accounts Never observed counts as full,
+ *   refilling a whole window from now - the most it can hold back.
+ * @param {number} burn Multiple of one account's even pace.
+ */
+export function simulate(accounts, burn, windowSecs, now) {
+    const lasts = { runsOutAt: null, resumesAt: null };
+    const rate = (burn * 100) / windowSecs;
+    if (!(rate > 0)) return lasts;
+    const pool = accounts.map((a) => ({
+        left: a.used === null ? 100 : Math.max(0, 100 - a.used),
+        resets: a.resets ?? now + windowSecs,
+    }));
+    if (pool.length === 0) return lasts;
+
+    let t = now;
+    for (let step = 0; step < SIMULATION_STEPS && t < now + windowSecs; step++) {
+        const nextReset = Math.min(...pool.map((a) => a.resets));
+        const drawing = pool.filter((a) => a.left > 0).sort((a, b) => a.resets - b.resets)[0];
+        if (!drawing) return { runsOutAt: Math.round(t), resumesAt: nextReset };
+        const emptyAt = t + drawing.left / rate;
+        if (emptyAt < nextReset) {
+            drawing.left = 0;
+            t = emptyAt;
+            continue;
+        }
+        drawing.left -= rate * (nextReset - t);
+        t = nextReset;
+        for (const a of pool) {
+            if (a.resets <= t) {
+                a.left = 100;
+                a.resets += windowSecs;
+            }
+        }
+    }
+    return lasts;
+}
+
+/**
+ * Whether the accounts in rotation, together, last at the current burn - published for cc-account
+ * beside the ranking. The judgement stays here; cc-account only displays it.
+ *
+ * `sustainable` is how many accounts can be drawn on: each refills once per window, so N of them
+ * sustain a burn of N.0x. An account whose login is about to stop refreshing is not counted.
+ */
+function forecast(rule, state, logins, limits, now) {
+    const keys = watchedBuckets(rule).map((b) => b.key);
+    const window = keys.includes("seven_day") ? "seven_day" : "five_hour";
+    const secs = WINDOW_SECS[window];
+    const names = rotationAccounts(rule).filter((name) => !loginDead(logins, name, now));
+
+    const p = computePace(limits?.[window], secs, now);
+    const burn = p?.reliable ? Number(p.ratio.toFixed(2)) : null;
+
+    const accounts = names.map((name) => {
+        const seen = current(state?.seen?.[name]?.buckets?.[window], secs, now);
+        return { name, used: seen ? Math.round(seen.used) : null, resets: seen?.resets ?? null };
+    });
+    const { runsOutAt, resumesAt } = burn === null ? { runsOutAt: null, resumesAt: null } : simulate(accounts, burn, secs, now);
+    return {
+        at: now,
+        window,
+        burn,
+        sustainable: names.length,
+        accounts,
+        unknown: accounts.filter((a) => a.used === null).map((a) => a.name),
+        runsOutAt,
+        resumesAt,
+    };
+}
+
+/** Two forecasts that say the same thing, whenever each was made. */
+function sameForecast(a, b) {
+    const { at: _a, ...restA } = a ?? {};
+    const { at: _b, ...restB } = b ?? {};
+    return JSON.stringify(restA) === JSON.stringify(restB);
+}
+
+/** The forecast the last decision published, for the status line. */
+export function readForecast(configFile) {
+    const f = readState(statePath(configFile)).forecast;
+    return f && typeof f === "object" ? f : null;
 }
 
 /**
@@ -533,7 +631,18 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
         // compare against the post-observation state - so the change is tracked here or not at all.
         let observed = observe(state, active, limits, rule, nowSecs);
         const ranking = publishedRanking(rankAccounts(rule, observed, logins, nowSecs), nowSecs);
-        if (rankingDue(observed.ranking, ranking, nowSecs)) observed = { ...observed, ranking };
+        const outlook = forecast(rule, observed, logins, limits, nowSecs);
+        // The forecast moves with the burn, more often than the ranking; each is rewritten when its
+        // own content moves, and both whenever the ranking is.
+        const rankingMoved = rankingDue(observed.ranking, ranking, nowSecs);
+        const outlookMoved = rankingMoved || !sameForecast(observed.forecast, outlook);
+        if (rankingMoved || outlookMoved) {
+            observed = {
+                ...observed,
+                ranking: rankingMoved ? ranking : observed.ranking,
+                forecast: outlookMoved ? outlook : observed.forecast,
+            };
+        }
         const filed = observed !== state;
         state = observed;
 
@@ -602,6 +711,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             seen: state.seen,
             // cc-account reads the ranking during the switch too, so it survives like the ledger.
             ranking: state.ranking,
+            forecast: state.forecast,
             because: hit.because ?? null,
             fallbackExhausted: false,
             held: null,

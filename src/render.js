@@ -117,6 +117,17 @@ function renderCache(payload, { c, cfg, now }) {
     return "";
 }
 
+/**
+ * Whether the accounts in rotation together last at the current burn: the burn against what the
+ * pool sustains (N accounts sustain N.0x), then when it stops, or `ok`. Only with two or more.
+ */
+function renderPool(forecast, { c, now }) {
+    if (!forecast || typeof forecast.burn !== "number" || !(forecast.sustainable >= 2)) return "";
+    const pace = `${fmtRatio(forecast.burn)}/${forecast.sustainable.toFixed(1)}x`;
+    if (typeof forecast.runsOutAt === "number") return `Pool: ${c.red(`${pace} stop ${clock(forecast.runsOutAt, now)}`)}`;
+    return `Pool: ${c.green(`${pace} ok`)}`;
+}
+
 /** This session's share of the cost every open session burned over the last hour. */
 function renderShare(share, { c }) {
     if (typeof share !== "number") return "";
@@ -136,9 +147,9 @@ function renderGit(git, { c, cfg }) {
  * @param {object} [opts.config]
  * @param {number} [opts.now] Unix seconds.
  * @param {object|null} [opts.git] Result of readGit(), or null.
- * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null}} [opts.notes]
- *   What the `burn`, `rotation` and `share` segments show, and the model mix named beside an
- *   over-budget ratio; the CLI computes them, since all four keep state on disk.
+ * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null}} [opts.notes]
+ *   What the `burn`, `rotation`, `share` and `pool` segments show, and the model mix named beside
+ *   an over-budget ratio; the CLI computes them, since all of them keep state on disk.
  * @returns {string}
  */
 export function render(payload, { color = true, config = DEFAULTS, now, git = null, notes = {} } = {}) {
@@ -163,6 +174,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
         else if (name === "memory") parts.push(renderMemory(payload, ctx));
         else if (name === "cache") parts.push(renderCache(payload, ctx));
         else if (name === "share") parts.push(renderShare(notes.share, ctx));
+        else if (name === "pool") parts.push(renderPool(notes.pool, ctx));
         else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");
         else {

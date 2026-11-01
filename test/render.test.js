@@ -238,6 +238,15 @@ test("the cache warning stays quiet with time to spare, a small conversation, or
     assert.equal(cacheLine(undefined), "");
 });
 
+test("the pool forecast reads as the burn against what the pool sustains, then stop or ok", () => {
+    const at = (pool) => render({}, { color: false, now: 1800000000, config: { ...DEFAULTS, segments: ["pool"] }, notes: { pool } });
+    const short = { burn: 3.56, sustainable: 3, runsOutAt: 1800000000 + 138 * 3600, resumesAt: 1800000000 + 164 * 3600 };
+    assert.equal(at(short), "Pool: 3.56x/3.0x stop Thu 02:00");
+    assert.equal(at({ ...short, burn: 1.2, runsOutAt: null }), "Pool: 1.20x/3.0x ok");
+    assert.equal(at({ ...short, burn: null }), "", "no burn yet");
+    assert.equal(at({ ...short, sustainable: 1 }), "", "one account is no pool");
+});
+
 test("a config that failed to load is flagged at the end of the line", () => {
     assert.ok(plain("on-pace", { configError: true }).endsWith(" | ! config"));
 });
