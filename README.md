@@ -22,8 +22,11 @@ from stdin and does arithmetic. It makes **zero network requests**, consumes **z
 cannot be rate limited. Run twenty sessions side by side if you like.
 
 What it keeps on disk, beside the config file: `burn-history.json`, a short history of readings the
-recent-burn warning needs, and `sessions/`, one small file per open session for the `share` segment.
-Drop `burn` and `share` from `segments` and nothing is written.
+recent-burn warning needs; `sessions/`, one small file per open session for the `share` segment;
+and `models/`, where it is up to in each session's transcript for the model mix. Drop `burn` and
+`share` from `segments` and set `modelMix` to `false`, and nothing is written. It reads the session
+transcripts Claude Code already keeps, only what was added since the last render, and never sends
+them anywhere.
 
 ## Install
 
@@ -69,7 +72,10 @@ then is a ratio of `0.99` - dead on target.
 
 The ETA is the projected moment usage reaches 100% at the current average rate. When the ratio is
 red, the model and its settings follow it - `1.26x Fri 21:20 Opus 5/high +think` - because the
-model is usually the cause and the thing to change.
+model is usually the cause and the thing to change. When subagents spend on other models, each
+model's share of the session's recent spend follows too: `Opus 5.5/medium 71% · Sonnet 5.5 27%`.
+The shares come from the session's transcripts, priced per model, so they match what `/usage`
+reports.
 
 An average over the whole window cannot see a burst: a quiet week hides a hard hour. The `burn`
 segment measures the rate over roughly the last hour and speaks only when that rate hits 100% before
@@ -120,6 +126,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "separator": " | ",
   "hideCalm": false,
   "showModelWindows": false,
+  "modelMix": true,
   "paceOn": ["seven_day"],
   "eta": "when-early",
   "minElapsedPct": 5,

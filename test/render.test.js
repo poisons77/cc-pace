@@ -161,6 +161,20 @@ test("over budget, the line names the model and settings doing the burning", () 
     assert.ok(out.endsWith("1.26x today 21:20 Opus 5/high +think +fast"), out);
 });
 
+test("over budget with subagents on another model, the cause names each model's share", () => {
+    const payload = { ...fixture("over-pace"), model: { id: "claude-opus-5-5", display_name: "Opus 5.5" }, effort: { level: "medium" } };
+    const mix = [
+        { model: "claude-opus-5-5", name: "Opus 5.5", share: 71 },
+        { model: "claude-sonnet-5-5", name: "Sonnet 5.5", share: 27 },
+        { model: "claude-haiku-5-5", name: "Haiku 5.5", share: 2 },
+    ];
+    const out = render(payload, { color: false, now: payload._now, notes: { mix } });
+    assert.ok(out.endsWith("1.26x today 21:20 Opus 5.5/medium 71% · Sonnet 5.5 27%"), out);
+
+    const alone = render(payload, { color: false, now: payload._now, notes: { mix: [mix[0]] } });
+    assert.ok(alone.endsWith("1.26x today 21:20 Opus 5.5/medium"), "one model: no shares to give");
+});
+
 test("on or under budget, the cause stays off the line", () => {
     const out = withPayload("on-pace", { model: { display_name: "Opus 5" } });
     assert.ok(!out.includes("Opus 5"), out);

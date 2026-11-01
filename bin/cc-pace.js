@@ -15,6 +15,7 @@ import { readGit } from "../src/git.js";
 import { runThresholdHook } from "../src/threshold.js";
 import { historyPath, update as updateBurn } from "../src/burn.js";
 import { update as updateShare } from "../src/share.js";
+import { update as updateMix } from "../src/models.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8"));
@@ -122,6 +123,8 @@ async function main() {
 
     // --demo excluded, as above. Unlike the limits, a session's cost exists without a subscription.
     const share = !has("--demo") && config.segments.includes("share") ? updateShare(file, payload, now) : null;
+    // Kept current every render, so the shares are ready the moment a ratio turns red.
+    const mix = !has("--demo") && config.modelMix ? updateMix(file, payload) : null;
 
     // Loaded only when configured: most installs never rotate, and should not pay for the import.
     // `enabled: false` keeps the user's accounts and thresholds while switching the engine off.
@@ -135,7 +138,7 @@ async function main() {
             config,
             git,
             now,
-            notes: { burn, rotation: rotationText, share },
+            notes: { burn, rotation: rotationText, share, mix },
         }),
     );
 

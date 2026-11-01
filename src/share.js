@@ -18,8 +18,8 @@ const FORGET_SECS = 86400;          // a session file untouched this long is del
 
 export const sessionsDir = (configFile) => join(dirname(configFile), "sessions");
 
-// session_id comes from the payload; keep only characters that are safe in a file name.
-const fileName = (id) => `${String(id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80)}.json`;
+/** session_id comes from the payload; keep only characters that are safe in a file name. */
+export const fileName = (id) => `${String(id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80)}.json`;
 
 function readSamples(file) {
     try {

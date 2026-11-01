@@ -15,6 +15,9 @@ export const DEFAULTS = {
     // Windows limited to one model (Opus, Sonnet, Fable, any added later) are hidden from "limits";
     // the account-wide windows are the ones that stop work. Name one in `segments` to show only it.
     showModelWindows: false,
+    // Beside an over-budget ratio, each model's share of the session's spend, subagents included,
+    // read from the transcripts (src/models.js).
+    modelMix: true,
     // Which buckets get the pace ratio + ETA appended.
     paceOn: ["seven_day"],
     // "when-early" only shows the depletion clock if it lands before the window resets.

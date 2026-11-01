@@ -77,11 +77,18 @@ export function ratio(value) {
     return `${value.toFixed(2)}x`;
 }
 
+// A model below this share of the session's spend is left out of the mix.
+const MIX_FLOOR_PCT = 5;
+
 /**
  * What the session is burning with: "Opus 5/high +think +fast". Shown beside a ratio that is over
  * budget, it turns "too fast" into a cause and so into an action. Every field is optional.
+ *
+ * With `mix` - each model's share of the session's spend, subagents included - and a second model
+ * worth naming, the shares follow: "Opus 5.5/medium +think 71% · Sonnet 5.5 29%". The settings
+ * describe the main conversation's model only; the payload has none for a subagent's.
  */
-export function cause(payload) {
+export function cause(payload, mix = []) {
     const name = payload?.model?.display_name || payload?.model?.id;
     if (typeof name !== "string" || !name) return "";
     let out = name;
@@ -89,5 +96,10 @@ export function cause(payload) {
     if (typeof effort === "string" && effort) out += `/${effort}`;
     if (payload?.thinking?.enabled === true) out += " +think";
     if (payload?.fast_mode === true) out += " +fast";
-    return out;
+
+    const named = (mix ?? []).filter((m) => m.share >= MIX_FLOOR_PCT);
+    if (named.length < 2) return out;
+    const main = named.find((m) => m.model === payload?.model?.id);
+    const others = named.filter((m) => m !== main).map((m) => `${m.name} ${percent(m.share)}`);
+    return [main ? `${out} ${percent(main.share)}` : out, ...others].join(" · ");
 }

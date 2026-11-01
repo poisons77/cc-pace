@@ -56,7 +56,7 @@ function bucketPace(key, limit, cfg, now) {
     return p?.reliable ? p : null;
 }
 
-function renderBucket(key, limit, { c, cfg, now, payload }) {
+function renderBucket(key, limit, { c, cfg, now, payload, notes }) {
     const p = bucketPace(key, limit, cfg, now);
     const level = p ? paceLevel(p.ratio, cfg) : null;
     if (cfg.hideCalm && limit.used_percentage < cfg.usedWarn && (level === null || level === "ok")) {
@@ -86,7 +86,7 @@ function renderBucket(key, limit, { c, cfg, now, payload }) {
     if (showEta) out += ` ${tone(clock(p.depletesAt, now))}`;
 
     // Over budget, the line names what is doing the burning: the model and its settings.
-    const why = level === "danger" ? cause(payload) : "";
+    const why = level === "danger" ? cause(payload, notes.mix) : "";
     if (why) out += ` ${c.magenta(why)}`;
 
     return out;
@@ -136,9 +136,9 @@ function renderGit(git, { c, cfg }) {
  * @param {object} [opts.config]
  * @param {number} [opts.now] Unix seconds.
  * @param {object|null} [opts.git] Result of readGit(), or null.
- * @param {{burn?: string|null, rotation?: string|null, share?: number|null}} [opts.notes] What the
- *   `burn`, `rotation` and `share` segments show; the CLI computes them, since all three keep state
- *   on disk.
+ * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null}} [opts.notes]
+ *   What the `burn`, `rotation` and `share` segments show, and the model mix named beside an
+ *   over-budget ratio; the CLI computes them, since all four keep state on disk.
  * @returns {string}
  */
 export function render(payload, { color = true, config = DEFAULTS, now, git = null, notes = {} } = {}) {
@@ -146,7 +146,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
     const c = palette(color);
     const nowSecs = now ?? Math.floor(Date.now() / 1000);
     const rateLimits = payload?.rate_limits || {};
-    const ctx = { c, cfg, now: nowSecs, payload };
+    const ctx = { c, cfg, now: nowSecs, payload, notes };
 
     const parts = [];
     for (const name of cfg.segments) {
