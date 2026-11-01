@@ -1,0 +1,43 @@
+name: release
+
+# Publishes to npm when a version tag is pushed, through npm trusted publishing: GitHub's OIDC
+# token proves the build came from this workflow, so no NPM_TOKEN is stored and no passkey is
+# asked for. The trusted publisher is configured on npmjs.com for poisons77/cc-pace and this file.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Update npm
+        run: npm install -g npm@latest
+      - name: Tag matches package.json
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json $version"
+            exit 1
+          fi
+      - name: Test
+        run: npm test
+      - name: Smoke test the packed tarball
+        run: |
+          npm pack
+          mkdir -p packtest
+          tar -xzf claude-code-pace-*.tgz -C packtest
+          node packtest/package/bin/cc-pace.js --demo --no-color | grep -q "Weekly: 71%"
+      - name: Publish
+        run: npm publish
