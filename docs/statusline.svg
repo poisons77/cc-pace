@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1162" height="250" viewBox="0 0 1162 250" role="img" aria-label="cc-pace status lines">
+<title>cc-pace status lines</title>
+<style>
+.t { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre; }
+.c { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; fill: #6e7681; white-space: pre; }
+</style>
+<rect width="1162" height="250" rx="10" fill="#0d1117"/>
+<circle cx="20" cy="18" r="6" fill="#ff5f57"/><circle cx="40" cy="18" r="6" fill="#febc2e"/><circle cx="60" cy="18" r="6" fill="#28c840"/>
+<text x="20" y="56" class="c"># on budget</text>
+<text x="20" y="78" class="t"><tspan fill="#e6edf3">Session: </tspan><tspan fill="#3fb950">17%</tspan><tspan fill="#8b949e"> (2h30m)</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">Weekly: </tspan><tspan fill="#3fb950">38%</tspan><tspan fill="#8b949e"> (4d2h)</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#3fb950">0.91x</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">Memory: </tspan><tspan fill="#3fb950">26%</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#39c5cf">main</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#3fb950">[clean]</tspan></text>
+<text x="20" y="106" class="c"># burning too fast - and why</text>
+<text x="20" y="128" class="t"><tspan fill="#e6edf3">Session: </tspan><tspan fill="#d29922">64%</tspan><tspan fill="#8b949e"> (1h12m)</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">Weekly: </tspan><tspan fill="#ff7b72">90%</tspan><tspan fill="#8b949e"> (2d0h)</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#ff7b72">1.26x</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#ff7b72">today 21:20</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#d2a8ff">Opus 5.5/medium 71% · Sonnet 5.5 27%</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">This chat: </tspan><tspan fill="#39c5cf">35%</tspan><tspan fill="#e6edf3"> of burn</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#39c5cf">main</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#d29922">[*+]</tspan></text>
+<text x="20" y="156" class="c"># a break is about to cost you</text>
+<text x="20" y="178" class="t"><tspan fill="#e6edf3">Weekly: </tspan><tspan fill="#d29922">52%</tspan><tspan fill="#8b949e"> (3d0h)</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#3fb950">0.91x</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">Memory: </tspan><tspan fill="#3fb950">61%</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#d29922">cache cold in 12m (270k)</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#ff7b72">Weekly 9h40m to 100% (17:40)</tspan></text>
+<text x="20" y="206" class="c"># with cc-account: two accounts, one pace</text>
+<text x="20" y="228" class="t"><tspan fill="#e6edf3">Weekly: </tspan><tspan fill="#ff7b72">80%</tspan><tspan fill="#8b949e"> (3d0h)</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#ff7b72">1.40x</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#ff7b72">tomorrow 08:00</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#e6edf3">Pool: </tspan><tspan fill="#3fb950">1.40x/2.0x ok</tspan><tspan fill="#8b949e"> | </tspan><tspan fill="#d29922">✓ on personal</tspan></text>
+</svg>

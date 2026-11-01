@@ -2,24 +2,28 @@
 
 Claude Code statusline that answers one question: **am I burning my usage too fast?**
 
-```
-Session: 17% (2h30m) | Weekly: 90% (2d0h) 1.26x Fri 21:20 | main [*+]
-```
+- **The easiest to set up:** one line in `settings.json`. No API key, no login, no config file.
+- **Zero tokens burnt:** it never calls a model or an API. Every number comes from the data Claude
+  Code already hands the statusline.
+- **Zero dependencies:** plain Node, with a 30 ms startup budget on top of Node's own that CI enforces.
 
-Read that as: the 5-hour window is 17% used with 2h30m left; the weekly window is 90% used with
-2 days left, being spent **1.26x faster than the budget allows**, and at this rate it runs dry
-**Friday 21:20** - well before it resets.
+![cc-pace status lines: on budget, burning too fast and why, a cache about to go cold, two accounts in rotation](https://raw.githubusercontent.com/poisons77/cc-pace/main/docs/statusline.svg)
+
+Read the second line as: the weekly window is 90% used with 2 days left, being spent **1.26x faster
+than the budget allows**, so at this rate it runs dry **today at 21:20** - well before it resets.
+The cause follows: this session's spend went 71% to Opus 5.5 and 27% to Sonnet 5.5 subagents.
 
 ## Why
 
 Claude Code shows you a percentage. A percentage alone can't tell you whether 71% is fine or
 alarming - that depends entirely on how much of the window has elapsed. cc-pace divides the two.
 
-## No API calls, ever
+## No API calls, no tokens, ever
 
-Since Claude Code 2.1.80 the statusline payload already contains `rate_limits`. cc-pace reads that
-from stdin and does arithmetic. It makes **zero network requests**, consumes **zero tokens**, and
-cannot be rate limited. Run twenty sessions side by side if you like.
+Some usage trackers poll an API or ask a model, and that spends the very quota they are watching.
+cc-pace does neither. Since Claude Code 2.1.80 the statusline payload already contains
+`rate_limits`; cc-pace reads it from stdin and does arithmetic. It makes **zero network requests**,
+consumes **zero tokens**, and cannot be rate limited. Run twenty sessions side by side if you like.
 
 What it keeps on disk, beside the config file: `burn-history.json`, a short history of readings the
 recent-burn warning needs; `sessions/`, one small file per open session for the `share` segment;
