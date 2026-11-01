@@ -2,7 +2,7 @@
 // Pure with respect to time and git: both are injected, so the whole renderer is snapshot-testable.
 
 import { palette } from "./colors.js";
-import { computePace, paceLevel, WINDOW_SECS } from "./pace.js";
+import { computePace, modelOf, paceLevel, windowSecs } from "./pace.js";
 import { cause, clock, duration, label, LABELS, percent, ratio as fmtRatio } from "./format.js";
 import { stateFlags } from "./git.js";
 import { DEFAULTS } from "./config.js";
@@ -12,9 +12,13 @@ export { LABELS, label };
 const SEGMENT_ALIASES = {
     session: "five_hour",
     weekly: "seven_day",
-    opus: "seven_day_opus",
-    sonnet: "seven_day_sonnet",
 };
+
+/** A segment name to a bucket key: an alias, the key itself, or a model's weekly window ("fable"). */
+function segmentKey(name, rateLimits) {
+    if (SEGMENT_ALIASES[name]) return SEGMENT_ALIASES[name];
+    return name in rateLimits ? name : `seven_day_${name}`;
+}
 
 function isBucket(value) {
     return value && typeof value.used_percentage === "number";
@@ -46,9 +50,9 @@ function paceTone(c, level) {
 
 /** The pace to render beside a bucket, or null where it has none or is too early to mean anything. */
 function bucketPace(key, limit, cfg, now) {
-    const windowSecs = WINDOW_SECS[key];
-    if (!cfg.paceOn.includes(key) || !windowSecs) return null;
-    const p = computePace(limit, windowSecs, now, { minElapsedPct: cfg.minElapsedPct });
+    const secs = windowSecs(key);
+    if (!cfg.paceOn.includes(key) || !secs) return null;
+    const p = computePace(limit, secs, now, { minElapsedPct: cfg.minElapsedPct });
     return p?.reliable ? p : null;
 }
 
@@ -131,7 +135,12 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
     const parts = [];
     for (const name of cfg.segments) {
         if (name === "limits") {
-            for (const key of bucketKeys(rateLimits)) parts.push(renderBucket(key, rateLimits[key], ctx));
+            // A model's own window (Opus, Sonnet, Fable, whatever comes next) only on request: the
+            // account-wide windows are the ones that stop work.
+            for (const key of bucketKeys(rateLimits)) {
+                if (modelOf(key) && !cfg.showModelWindows) continue;
+                parts.push(renderBucket(key, rateLimits[key], ctx));
+            }
             continue;
         }
         if (name === "git") parts.push(renderGit(git, ctx));
@@ -140,7 +149,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
         else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");
         else {
-            const key = SEGMENT_ALIASES[name] || name;
+            const key = segmentKey(name, rateLimits);
             if (isBucket(rateLimits[key])) parts.push(renderBucket(key, rateLimits[key], ctx));
         }
     }
@@ -161,9 +170,8 @@ export function metrics(payload, { config = DEFAULTS, now } = {}) {
 
     for (const key of bucketKeys(rateLimits)) {
         const limit = rateLimits[key];
-        const p = WINDOW_SECS[key]
-            ? computePace(limit, WINDOW_SECS[key], nowSecs, { minElapsedPct: cfg.minElapsedPct })
-            : null;
+        const secs = windowSecs(key);
+        const p = secs ? computePace(limit, secs, nowSecs, { minElapsedPct: cfg.minElapsedPct }) : null;
         out.limits[key] = {
             label: label(key),
             // The API sends floats such as 7.000000000000001; keep the precision that matters

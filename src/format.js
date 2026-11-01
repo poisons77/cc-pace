@@ -1,17 +1,25 @@
 // Short human formats. Everything here is pure.
 
-// Display names for the rate-limit buckets, in the order they render. Both the limit segments and
-// the wall segment name a bucket from here, so one bucket reads the same wherever it appears.
+import { modelOf } from "./pace.js";
+
+// Display names for the account-wide windows, in the order they render. Both the limit segments
+// and the burn warning name a bucket from here, so one bucket reads the same wherever it appears.
 export const LABELS = {
     five_hour: "Session",
     seven_day: "Weekly",
-    seven_day_opus: "Opus",
-    seven_day_sonnet: "Sonnet",
 };
 
-/** Curated name for a known bucket; a humanised key for anything Claude Code starts sending. */
+const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * Curated name for an account-wide window, the model's name for a model-specific one
+ * (`seven_day_fable` -> "Fable"), and a humanised key for anything else Claude Code starts sending.
+ */
 export function label(key) {
-    return LABELS[key] || key.replace(/_/g, " ");
+    if (LABELS[key]) return LABELS[key];
+    const model = modelOf(key);
+    if (model) return capitalise(model.replace(/_/g, " "));
+    return key.replace(/_/g, " ");
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

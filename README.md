@@ -79,7 +79,7 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | --- | --- |
 | `Session` | `rate_limits.five_hour` - 5-hour rolling window |
 | `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
-| `Opus` / `Sonnet` | `rate_limits.seven_day_opus` / `seven_day_sonnet`, when your plan reports them |
+| `Opus` / `Sonnet` / `Fable` | a model's own weekly window, such as `seven_day_fable`, when your plan reports it. Hidden unless `showModelWindows` is on; any model added later is labelled and paced the same way |
 | `This chat` | this session's share of what all open sessions spent in the last hour, e.g. `This chat: 35% of burn`; shown once a second session is burning |
 | `Memory` | how full this conversation is - what `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything |
 | burn | the recent-rate warning above; empty while the recent rate is safe |
@@ -115,6 +115,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "segments": ["limits", "share", "memory", "burn", "rotation", "git"],
   "separator": " | ",
   "hideCalm": false,
+  "showModelWindows": false,
   "paceOn": ["seven_day"],
   "eta": "when-early",
   "minElapsedPct": 2,
@@ -129,7 +130,9 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 ```
 
 - `segments` - order and contents of the line. `"limits"` expands to every bucket present.
-  Aliases: `session`, `weekly`, `opus`, `sonnet`.
+  Aliases: `session`, `weekly`, and any model's name for its own window (`fable`, `opus`).
+- `showModelWindows` - add every model's own window to `"limits"`. Off by default: the account-wide
+  windows are the ones that stop work. Naming one model in `segments` shows only that one.
 - `hideCalm` - show a window only when it is at or over pace or past `usedWarn`, and the memory
   only past `memoryWarn`. The line then carries only what needs attention.
 - `paceOn` - which buckets get the ratio and ETA. Add `"five_hour"` to pace the session too.

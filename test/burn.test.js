@@ -150,11 +150,11 @@ test("the wall segment names the bucket it is about", () => {
     assert.match(seg, /^Session 20m to 100% \(\d\d:\d\d\)$/);
 });
 
-test("a bucket with no curated name still says which one it is", () => {
+test("a model's window is named after the model, even one cc-pace has never heard of", () => {
     const file = historyFile();
     const haiku = (u) => ({ seven_day_haiku: { used_percentage: u, resets_at: RESET } });
 
     update(file, haiku(80), T0);
-    // Same humanised fallback the limit segments use, so a new limit type reads alike in both.
-    assert.match(update(file, haiku(86), T0 + 3600), /^seven day haiku 2h20m to 100% \(/);
+    // Same label the limit segments use, so a new limit type reads alike in both.
+    assert.match(update(file, haiku(86), T0 + 3600), /^Haiku 2h20m to 100% \(/);
 });

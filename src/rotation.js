@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { computePace, WINDOW_SECS } from "./pace.js";
+import { computePace, WINDOW_SECS, windowSecs as windowLength } from "./pace.js";
 import { historyPath, projectWall, readHistory } from "./burn.js";
 
 // A switch takes a second or two; without a cooldown every render in that gap would spawn again.
@@ -233,7 +233,7 @@ function freeAt(seen, rule, now) {
 function spare(seen, rule, now) {
     let tightest = null;
     for (const { key } of watchedBuckets(rule)) {
-        const windowSecs = WINDOW_SECS[key];
+        const windowSecs = windowLength(key);
         const bucket = seen?.buckets?.[key];
         if (!(windowSecs >= WINDOW_SECS.seven_day) || !bucket || typeof bucket.resets !== "number") continue;
         let { used, resets } = bucket;

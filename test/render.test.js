@@ -183,6 +183,29 @@ test("burn and rotation notes render where their segments sit", () => {
     assert.equal(out, "Weekly: 71% (2d0h) 0.99x | Weekly 1h7m to 100% (22:13) | ✓ on personal");
 });
 
+const withModels = {
+    five_hour: { used_percentage: 17, resets_at: 1800009000 },
+    seven_day: { used_percentage: 71, resets_at: 1800172800 },
+    seven_day_sonnet: { used_percentage: 3, resets_at: 1800172800 },
+    seven_day_fable: { used_percentage: 40, resets_at: 1800172800 },
+};
+
+test("a model's own weekly window stays off the line unless asked for", () => {
+    const line = (config) =>
+        render({ rate_limits: withModels }, { color: false, now: 1800000000, config: { ...DEFAULTS, ...config } });
+    assert.ok(!/Sonnet|Fable/.test(line({})), line({}));
+    assert.match(line({ showModelWindows: true }), /Sonnet: 3% \(2d0h\) \| Fable: 40% \(2d0h\)/);
+    assert.equal(line({ segments: ["fable"] }), "Fable: 40% (2d0h)", "named alone in segments");
+});
+
+test("a model's window gets pace from its base window, without being listed anywhere", () => {
+    const out = render(
+        { rate_limits: withModels },
+        { color: false, now: 1800000000, config: { ...DEFAULTS, segments: ["fable"], paceOn: ["seven_day_fable"] } },
+    );
+    assert.match(out, /^Fable: 40% \(2d0h\) 0\.56x$/);
+});
+
 test("a config that failed to load is flagged at the end of the line", () => {
     assert.ok(plain("on-pace", { configError: true }).endsWith(" | ! config"));
 });

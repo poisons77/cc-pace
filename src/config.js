@@ -11,6 +11,9 @@ export const DEFAULTS = {
     // both render nothing until they have something to say.
     segments: ["limits", "share", "memory", "burn", "rotation", "git"],
     separator: " | ",
+    // Windows limited to one model (Opus, Sonnet, Fable, any added later) are hidden from "limits";
+    // the account-wide windows are the ones that stop work. Name one in `segments` to show only it.
+    showModelWindows: false,
     // Which buckets get the pace ratio + ETA appended.
     paceOn: ["seven_day"],
     // "when-early" only shows the depletion clock if it lands before the window resets.

@@ -3,9 +3,22 @@
 export const WINDOW_SECS = {
     five_hour: 5 * 3600,
     seven_day: 7 * 86400,
-    seven_day_opus: 7 * 86400,
-    seven_day_sonnet: 7 * 86400,
 };
+
+const MODEL_WINDOW = /^(five_hour|seven_day)_(.+)$/;
+
+/**
+ * The model a window is limited to - "opus" for `seven_day_opus` - or null for an account-wide
+ * window. Matching the shape rather than a list means a model added next year is recognised too.
+ */
+export function modelOf(key) {
+    return MODEL_WINDOW.exec(key)?.[2] ?? null;
+}
+
+/** Window length in seconds, from the key's base window for a model-specific one; null if unknown. */
+export function windowSecs(key) {
+    return WINDOW_SECS[key] ?? WINDOW_SECS[MODEL_WINDOW.exec(key)?.[1]] ?? null;
+}
 
 // Minutes into a week-long window, `elapsedPct` is a fraction of a percent, so the ratio divides
 // by something close to zero: one percent used three minutes in reads as 47x, and the projected
