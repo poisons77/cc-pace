@@ -17,6 +17,8 @@ import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { computePace, WINDOW_SECS } from "./pace.js";
+import { historyPath, projectWall, readHistory } from "./burn.js";
 
 // A switch takes a second or two; without a cooldown every render in that gap would spawn again.
 const COOLDOWN_SECS = 45;
@@ -36,25 +38,37 @@ const SETTLE_SECS = 120;
 // How long a target that did not answer is left alone before it is tried again.
 const RETRY_SECS = 300;
 
-/** Written by cc-account on every switch - the only reliable source of account identity. */
-function activeAccount(store) {
+// A login that stops refreshing within this margin is treated as already gone: switching into it
+// would land on an account that logs out mid-turn. Fixed, not a setting: it is the same hour
+// cc-account shows as its red alert, so both tools draw the line in one place.
+const LOGIN_MARGIN_SECS = 3600;
+
+// The published ranking is rewritten at least this often, so a reader can tell a stable ranking
+// from one nobody has refreshed.
+const RANKING_REFRESH_SECS = 600;
+
+/**
+ * What cc-account publishes on every switch, save, renewal and session start - the only reliable
+ * source of account identity. One read: `active`, when it last changed, and when each login stops
+ * refreshing (`null` when unknown).
+ */
+function published(store) {
     try {
-        const file = join(store, "rotation-state.json");
-        return JSON.parse(readFileSync(file, "utf8")).active ?? null;
+        const doc = JSON.parse(readFileSync(join(store, "rotation-state.json"), "utf8"));
+        return {
+            active: doc.active ?? null,
+            switchedAt: typeof doc.switchedAt === "number" ? doc.switchedAt : null,
+            logins: doc.logins && typeof doc.logins === "object" ? doc.logins : {},
+        };
     } catch {
-        return null;
+        return { active: null, switchedAt: null, logins: {} };
     }
 }
 
-/** When the active account last changed, or null when cc-account has never published one. */
-function switchedAt(store) {
-    try {
-        const file = join(store, "rotation-state.json");
-        const stamp = JSON.parse(readFileSync(file, "utf8")).switchedAt;
-        return typeof stamp === "number" ? stamp : null;
-    } catch {
-        return null;
-    }
+/** A known expiry inside the margin. Unknown (`null` or missing) is allowed, as cc-account cannot always tell. */
+function loginDead(logins, name, now) {
+    const expires = logins?.[name];
+    return typeof expires === "number" && expires - now < LOGIN_MARGIN_SECS;
 }
 
 function readState(file) {
@@ -65,16 +79,20 @@ function readState(file) {
     }
 }
 
+/**
+ * The text the last decision published, shown as-is. It reflects the previous render, which for a
+ * status line redrawn on every turn is current enough, and keeps the engine off the render path.
+ */
+export function readDisplay(configFile) {
+    const text = readState(statePath(configFile)).display;
+    return typeof text === "string" && text ? text : null;
+}
+
 function writeState(file, state) {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
 }
 
-/**
- * Pure decision: what should happen for this payload, given who is active and what we remember.
- *
- * @returns {{action: "to-fallback"|"to-primary", target: string, primaryResetsAt: number|null}|null}
- */
 /**
  * Every watched window, paired with the percentage that forces a move.
  *
@@ -120,16 +138,26 @@ export function watchedBuckets(rule) {
  * A reset already in the past marks a payload rendered before the window rolled over: acting on
  * it would flee a window that has just refilled, and would store an expired reset so the return
  * fires immediately. Such readings are treated as unreadable rather than exhausted.
+ *
+ * With `rule.switchAheadSecs`, a window under its bar also counts when the recent burn rate reaches
+ * 100% within that many seconds, before the reset. A switch fires only on a render, and a long
+ * subagent run can burn the last few percent between two renders - after which the turn dies on the
+ * limit and the switch has to be made by hand. Such entries carry `burn: true`.
  */
-function exhausted(limits, rule, now) {
+function exhausted(limits, rule, now, history) {
+    const ahead = typeof rule?.switchAheadSecs === "number" ? rule.switchAheadSecs : null;
     return watchedBuckets(rule)
         .map((bucket) => ({ ...bucket, limit: limits?.[bucket.key] }))
-        .filter(({ limit, at, lateAt, lateWithinSecs }) => {
-            if (!limit || typeof limit.used_percentage !== "number") return false;
-            if (!(limit.resets_at > now)) return false;
+        .filter(({ limit }) => limit && typeof limit.used_percentage === "number" && limit.resets_at > now)
+        .map((entry) => {
+            const { key, limit, at, lateAt, lateWithinSecs } = entry;
             const near = lateWithinSecs !== undefined && limit.resets_at - now <= lateWithinSecs;
-            return limit.used_percentage >= (near ? lateAt : at);
-        });
+            if (limit.used_percentage >= (near ? lateAt : at)) return entry;
+            if (ahead === null) return null;
+            const wall = projectWall(limit, history?.[key], now);
+            return wall?.beforeReset && wall.secondsToWall <= ahead ? { ...entry, burn: true } : null;
+        })
+        .filter(Boolean);
 }
 
 /**
@@ -159,60 +187,155 @@ function observe(state, active, limits, rule, now) {
 }
 
 /**
- * How much room an account has left, as the tightest of its watched windows.
+ * Room under its own bar for each watched window seen of an account, with when it resets.
  *
  * A window whose reset has passed counts as empty rather than as last seen: that is the one fact
- * time improves rather than degrades. Never observed counts as wide open - assuming the worst of
- * an unknown account would strand you on a spent one for no reason.
+ * time improves rather than degrades.
  */
-function headroom(seen, rule, now) {
-    let worst = 100;
-    for (const { key, at, lateAt, lateWithinSecs } of watchedBuckets(rule)) {
+function windowRooms(seen, rule, now) {
+    return watchedBuckets(rule).flatMap(({ key, at, lateAt, lateWithinSecs }) => {
         const bucket = seen?.buckets?.[key];
-        if (!bucket) continue;
+        if (!bucket) return [];
         const rolled = bucket.resets <= now;
         const near = !rolled && lateWithinSecs !== undefined && bucket.resets - now <= lateWithinSecs;
         const bar = near ? lateAt : at;
-        worst = Math.min(worst, bar - (rolled ? 0 : bucket.used));
-    }
-    return worst;
+        return [{ room: bar - (rolled ? 0 : bucket.used), resets: bucket.resets }];
+    });
 }
 
 /**
- * Peers of equal worth: leave whichever account you are on once it is spent, for whichever peer
- * has room. There is no reserve to protect and nothing to come back to, so the only question is
- * where to go next - and the ledger above is what answers it before the move rather than after.
+ * How much room an account has left, as the tightest of its watched windows. Never observed counts
+ * as wide open - assuming the worst of an unknown account would strand you on a spent one for no
+ * reason.
  */
-function decideAmong({ limits, rule, active, state, now }) {
-    const accounts = rule.accounts;
-    if (!accounts.includes(active)) return null;
-
-    const over = exhausted(limits, rule, now);
-    if (over.length === 0) return null;
-
-    const roomy = accounts
-        .filter((name) => name !== active)
-        .map((name) => ({ name, room: headroom(state?.seen?.[name], rule, now) }))
-        .filter(({ room }) => room > 0);
-    if (roomy.length === 0) return null;
-
-    // Most room first, so a switch buys the longest stretch before the next one.
-    const target = roomy.sort((a, b) => b.room - a.room)[0].name;
-    return { action: "to-peer", target, because: over.map((entry) => entry.key) };
+function headroom(seen, rule, now) {
+    return Math.min(100, ...windowRooms(seen, rule, now).map((w) => w.room));
 }
 
-export function decide({ limits, rule, active, state, now }) {
+/**
+ * When a spent account gets room again: the latest reset among the windows holding it over its
+ * bar, since every one of them has to clear. Null when nothing holds it.
+ */
+function freeAt(seen, rule, now) {
+    const over = windowRooms(seen, rule, now).filter((w) => w.room <= 0);
+    return over.length ? Math.max(...over.map((w) => w.resets)) : null;
+}
+
+/**
+ * Quota an account will lose at its weekly reset if nobody uses it: elapsed% - used%, the tightest
+ * across the watched weekly windows. Unused quota is gone at the reset, so an account at 60% whose
+ * week ends in two hours should be drained before one at 40% with six days left.
+ *
+ * A window whose reset has passed has refilled: its reset moves forward by whole windows and it
+ * counts as unused. Only windows a week or longer count - a 5-hour window refills the same day and
+ * loses nothing worth ranking on. Null when nothing weekly is watched or ever seen.
+ */
+function spare(seen, rule, now) {
+    let tightest = null;
+    for (const { key } of watchedBuckets(rule)) {
+        const windowSecs = WINDOW_SECS[key];
+        const bucket = seen?.buckets?.[key];
+        if (!(windowSecs >= WINDOW_SECS.seven_day) || !bucket || typeof bucket.resets !== "number") continue;
+        let { used, resets } = bucket;
+        if (resets <= now) {
+            resets += Math.ceil((now - resets + 1) / windowSecs) * windowSecs;
+            used = 0;
+        }
+        const p = computePace({ used_percentage: used, resets_at: resets }, windowSecs, now);
+        if (!p) continue;
+        const value = p.elapsedPct - used;
+        tightest = tightest === null ? value : Math.min(tightest, value);
+    }
+    return tightest;
+}
+
+const rotationAccounts = (rule) =>
+    Array.isArray(rule?.accounts) && rule.accounts.length > 1 ? rule.accounts : [rule?.primary, rule?.fallback].filter(Boolean);
+
+/**
+ * Every account, best first: eligible ones before the rest, then the most quota a reset would
+ * waste, then the most room. Eligible means room left under its bars and a login that will not
+ * stop refreshing within the margin.
+ */
+function rankAccounts(rule, state, logins, now) {
+    return rotationAccounts(rule)
+        .map((name) => {
+            const room = headroom(state?.seen?.[name], rule, now);
+            const reason = loginDead(logins, name, now) ? "login" : room > 0 ? null : "spent";
+            return {
+                name,
+                eligible: reason === null,
+                reason,
+                room,
+                spare: spare(state?.seen?.[name], rule, now),
+                // Only a spent account frees on its own; a dead login waits for a re-login.
+                freeAt: reason === "spent" ? freeAt(state?.seen?.[name], rule, now) : null,
+            };
+        })
+        .sort((a, b) => b.eligible - a.eligible || (b.spare ?? 0) - (a.spare ?? 0) || b.room - a.room);
+}
+
+/**
+ * The ranking as cc-account reads it from this engine's state file: `cc-account rotate` takes the
+ * first eligible account that is not active while `at` is under six hours old.
+ */
+function publishedRanking(ranked, now) {
+    return {
+        at: now,
+        accounts: ranked.map(({ name, eligible, reason, room, spare: s, freeAt: free }) => ({
+            name,
+            eligible,
+            reason,
+            room: Math.round(room),
+            spare: s === null ? null : Math.round(s),
+            freeAt: free,
+        })),
+    };
+}
+
+/** Rewritten when its content changes, or once it is old enough to look abandoned. */
+function rankingDue(prior, next, now) {
+    if (!prior || !Array.isArray(prior.accounts)) return true;
+    if (now - (prior.at ?? 0) >= RANKING_REFRESH_SECS) return true;
+    return JSON.stringify(prior.accounts) !== JSON.stringify(next.accounts);
+}
+
+/**
+ * Peers of equal worth: leave whichever account you are on once it is spent, for the best-ranked
+ * peer. There is no reserve to protect and nothing to come back to, so the only question is where
+ * to go next - and the ledger above is what answers it before the move rather than after.
+ */
+function decideAmong({ limits, rule, active, state, now, logins, history }) {
+    if (!rule.accounts.includes(active)) return null;
+
+    const over = exhausted(limits, rule, now, history);
+    if (over.length === 0) return null;
+
+    const target = rankAccounts(rule, state, logins, now).find((a) => a.eligible && a.name !== active);
+    if (!target) return null;
+    return { action: "to-peer", target: target.name, because: over.map((entry) => entry.key) };
+}
+
+/**
+ * Pure decision: what should happen for this payload, given who is active and what we remember.
+ * `logins` is cc-account's published expiry per account; `history` the burn history, read only
+ * when `rule.switchAheadSecs` is set.
+ *
+ * @returns {{action: "to-fallback"|"to-primary"|"to-peer", target: string, primaryResetsAt?: number|null}|null}
+ */
+export function decide({ limits, rule, active, state, now, logins = {}, history = null }) {
     if (!active) return null;
     if (Array.isArray(rule?.accounts) && rule.accounts.length > 1) {
-        return decideAmong({ limits, rule, active, state, now });
+        return decideAmong({ limits, rule, active, state, now, logins, history });
     }
     if (!rule?.primary || !rule?.fallback) return null;
 
     const grace = typeof rule.returnGraceSeconds === "number" ? rule.returnGraceSeconds : 60;
 
     if (active === rule.primary) {
-        const over = exhausted(limits, rule, now);
+        const over = exhausted(limits, rule, now, history);
         if (over.length === 0) return null;
+        if (loginDead(logins, rule.fallback, now)) return null;
         // Blocked until the longest of the exhausted windows frees: a 5-hour window clears in
         // hours, a weekly one in days, and returning before then would just bounce straight back.
         const blockedUntil = Math.max(...over.map((entry) => entry.limit.resets_at));
@@ -228,6 +351,7 @@ export function decide({ limits, rule, active, state, now }) {
         const resetsAt = state?.primaryResetsAt;
         if (!resetsAt) return null;
         if (now < resetsAt + grace) return null;
+        if (loginDead(logins, rule.primary, now)) return null;
         return { action: "to-primary", target: rule.primary, primaryResetsAt: null };
     }
 
@@ -345,22 +469,26 @@ function logEvent(configFile, rule, event, fields = {}) {
     }
 }
 
-/** What the payload said about the windows that forced a move, for the log line. */
+/** What the payload said about the windows that forced a move, for the log line. `~burn` marks a projected wall. */
 const readingsOf = (over) =>
-    over.map(({ key, limit }) => `${key}:${Math.round(limit.used_percentage)}%`).join(",");
+    over.map(({ key, limit, burn }) => `${key}:${Math.round(limit.used_percentage)}%${burn ? "~burn" : ""}`).join(",");
 
 /**
  * Evaluates the rule and switches when due. Returns the action taken, or null.
  */
 export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.now() / 1000)) {
     try {
+        // Switched off from cc-account's menu: no decision, no spawn, no status and no filing.
+        if (rule?.enabled === false) return null;
         const peers = Array.isArray(rule?.accounts) && rule.accounts.length > 1;
         if (!peers && (!rule?.primary || !rule?.fallback)) return null;
 
         const store = rule.store || join(homedir(), ".claude-accounts");
         const file = statePath(configFile);
         const stored = readState(file);
-        const active = activeAccount(store);
+        const { active, switchedAt, logins } = published(store);
+        // Read-only here: the status line writes the history on every render.
+        const history = typeof rule.switchAheadSecs === "number" ? readHistory(historyPath(configFile)) : null;
 
         // Clear the in-flight marker as soon as the switch lands, rather than waiting out the
         // cooldown - otherwise a short window could expire before the next decision is allowed.
@@ -394,7 +522,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
         // The account changed too recently for this payload to describe it. Render, decide nothing -
         // and record nothing, because filing these readings under the new account would write the
         // account you just left into the ledger as though it were the one you arrived at.
-        const settling = nowSecs - (switchedAt(store) ?? 0) < SETTLE_SECS;
+        const settling = nowSecs - (switchedAt ?? 0) < SETTLE_SECS;
         if (settling) {
             const text = display(rule, state, nowSecs, { active });
             if (state.display !== text) writeState(file, { ...state, display: text });
@@ -403,18 +531,20 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
 
         // A render that only files a reading still has something new to save, and the checks below
         // compare against the post-observation state - so the change is tracked here or not at all.
-        const observed = observe(state, active, limits, rule, nowSecs);
+        let observed = observe(state, active, limits, rule, nowSecs);
+        const ranking = publishedRanking(rankAccounts(rule, observed, logins, nowSecs), nowSecs);
+        if (rankingDue(observed.ranking, ranking, nowSecs)) observed = { ...observed, ranking };
         const filed = observed !== state;
         state = observed;
 
-        const hit = decide({ limits, rule, active, state, now: nowSecs });
+        const hit = decide({ limits, rule, active, state, now: nowSecs, logins, history });
 
         if (!hit) {
             let next = state;
             if (peers) {
                 // Nowhere with room is the one thing the bar must say plainly, so it is recorded
                 // rather than recomputed: the renderer never sees the payload.
-                const stuck = exhausted(limits, rule, nowSecs).length > 0;
+                const stuck = exhausted(limits, rule, nowSecs, history).length > 0;
                 const soonest = rule.accounts
                     .filter((name) => name !== active)
                     .flatMap((name) =>
@@ -440,7 +570,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             if (!peers && active === rule.fallback) {
                 // While parked here, watch this account too: if it is also capped there is nowhere
                 // to move, and the status line should say that instead of promising a switch.
-                const capped = exhausted(limits, rule, nowSecs).length > 0;
+                const capped = exhausted(limits, rule, nowSecs, history).length > 0;
                 if (state.fallbackExhausted !== capped) next = { ...state, fallbackExhausted: capped };
             }
             const text = display(rule, next, nowSecs, { active });
@@ -470,6 +600,8 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             // The ledger survives the switch: it is how the account being left is judged when it
             // becomes a candidate again.
             seen: state.seen,
+            // cc-account reads the ranking during the switch too, so it survives like the ledger.
+            ranking: state.ranking,
             because: hit.because ?? null,
             fallbackExhausted: false,
             held: null,
@@ -480,7 +612,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             from: active,
             target: hit.target,
             because: hit.because?.join(",") ,
-            read: readingsOf(exhausted(limits, rule, nowSecs)),
+            read: readingsOf(exhausted(limits, rule, nowSecs, history)),
         });
 
         const bin = rule.command || "cc-account";

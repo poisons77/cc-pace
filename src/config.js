@@ -6,8 +6,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const DEFAULTS = {
-    // "limits" expands to every rate-limit bucket the payload actually carries.
-    segments: ["limits", "git"],
+    // "limits" expands to every rate-limit bucket the payload actually carries. "burn" is the
+    // recent-rate warning (src/burn.js), "rotation" the account-switch status (src/rotation.js);
+    // both render nothing until they have something to say.
+    segments: ["limits", "share", "memory", "burn", "rotation", "git"],
     separator: " | ",
     // Which buckets get the pace ratio + ETA appended.
     paceOn: ["seven_day"],
@@ -21,6 +23,13 @@ export const DEFAULTS = {
     // Percentage thresholds that tint the raw used% figure.
     usedWarn: 50,
     usedDanger: 80,
+    // Memory: how full this conversation's context window is - what /compact clears. Higher than the
+    // usage thresholds: a conversation fills and compacts within a session, so half full is routine.
+    memoryWarn: 70,
+    memoryDanger: 85,
+    // Render a window or the memory only when it needs attention: at or over pace, or past its
+    // warn threshold.
+    hideCalm: false,
     ascii: false,
     // Optional {bucket, at, run}: runs a command once per window when used% crosses `at`.
     // See src/threshold.js.
@@ -41,16 +50,29 @@ function fromEnv(env) {
     return out;
 }
 
+const isStringList = (value) => Array.isArray(value) && value.every((s) => typeof s === "string");
+
 /**
  * Never throws: a broken config file degrades to defaults rather than blanking the statusline.
+ * `configError` is set when that happened, so the line can say why the settings do nothing.
  */
 export function loadConfig(env = process.env) {
     let file = {};
+    let configError = false;
     const path = configPath(env);
     try {
         if (existsSync(path)) file = JSON.parse(readFileSync(path, "utf8"));
+        if (!file || typeof file !== "object" || Array.isArray(file)) throw new Error("not an object");
     } catch {
         file = {};
+        configError = true;
     }
-    return { ...DEFAULTS, ...file, ...fromEnv(env) };
+    const config = { ...DEFAULTS, ...file, ...fromEnv(env) };
+    for (const key of ["segments", "paceOn"]) {
+        if (!isStringList(config[key])) {
+            config[key] = DEFAULTS[key];
+            configError = true;
+        }
+    }
+    return configError ? { ...config, configError } : config;
 }

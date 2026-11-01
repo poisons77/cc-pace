@@ -11,7 +11,7 @@
 // Nothing here may throw: a missing or corrupt history degrades to "no opinion".
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { label } from "./format.js";
 
 const KEEP = 60;                  // samples per bucket
@@ -57,6 +57,9 @@ export function trimImplausible(series) {
     }
     return start ? series.slice(start) : series;
 }
+
+/** The history lives beside the config file, so `CC_PACE_CONFIG` relocates both together. */
+export const historyPath = (configFile) => join(dirname(configFile), "burn-history.json");
 
 export function readHistory(file) {
     try {
@@ -203,8 +206,11 @@ const shortSpan = (secs) => {
  */
 export function update(file, limits, now = Math.floor(Date.now() / 1000), opts = {}) {
     try {
-        const history = record(readHistory(file), limits, now);
-        writeHistory(file, history);
+        const before = readHistory(file);
+        const history = record(before, limits, now);
+        // Most renders repeat the last reading, which `record` collapses. Skipping the unchanged
+        // write is the difference between ~1 ms and ~20 ms a render on Windows.
+        if (JSON.stringify(history) !== JSON.stringify(before)) writeHistory(file, history);
 
         const watched = opts.buckets ?? Object.keys(limits ?? {});
         let soonest = null;

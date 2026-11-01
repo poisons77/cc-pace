@@ -130,6 +130,63 @@ test("metrics expose the numbers behind the line", () => {
     assert.equal(m.limits.five_hour.elapsed_percentage, 50);
 });
 
+const withPayload = (name, extra, config = {}) => {
+    const payload = { ...fixture(name), ...extra };
+    return render(payload, { color: false, now: payload._now, config: { ...DEFAULTS, ...config } });
+};
+
+test("how full the conversation is renders as Memory", () => {
+    const out = withPayload("on-pace", { context_window: { used_percentage: 42.4 } });
+    assert.equal(out, "Session: 17% (2h30m) | Weekly: 71% (2d0h) 0.99x | Memory: 42%");
+});
+
+test("this session's share of the burn renders where its segment sits", () => {
+    const payload = fixture("on-pace");
+    const out = render(payload, {
+        color: false,
+        now: payload._now,
+        config: { ...DEFAULTS, segments: ["weekly", "share"] },
+        notes: { share: 34.6 },
+    });
+    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | This chat: 35% of burn");
+});
+
+test("over budget, the line names the model and settings doing the burning", () => {
+    const out = withPayload("over-pace", {
+        model: { display_name: "Opus 5" },
+        effort: { level: "high" },
+        thinking: { enabled: true },
+        fast_mode: true,
+    });
+    assert.ok(out.endsWith("1.26x today 21:20 Opus 5/high +think +fast"), out);
+});
+
+test("on or under budget, the cause stays off the line", () => {
+    const out = withPayload("on-pace", { model: { display_name: "Opus 5" } });
+    assert.ok(!out.includes("Opus 5"), out);
+});
+
+test("hideCalm drops windows and memory that need no attention", () => {
+    const extra = { context_window: { used_percentage: 30 } };
+    assert.equal(withPayload("under-pace", extra, { hideCalm: true }), "");
+    assert.equal(withPayload("over-pace", extra, { hideCalm: true }), "Session: 88% (1h0m) | Weekly: 90% (2d0h) 1.26x today 21:20");
+});
+
+test("burn and rotation notes render where their segments sit", () => {
+    const payload = fixture("on-pace");
+    const out = render(payload, {
+        color: false,
+        now: payload._now,
+        config: { ...DEFAULTS, segments: ["weekly", "burn", "rotation"] },
+        notes: { burn: "Weekly 1h7m to 100% (22:13)", rotation: "✓ on personal" },
+    });
+    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | Weekly 1h7m to 100% (22:13) | ✓ on personal");
+});
+
+test("a config that failed to load is flagged at the end of the line", () => {
+    assert.ok(plain("on-pace", { configError: true }).endsWith(" | ! config"));
+});
+
 test("render never throws on garbage input", () => {
     for (const bad of [null, undefined, {}, { rate_limits: null }, { rate_limits: { x: 1 } }]) {
         assert.doesNotThrow(() => render(bad, { color: false, now: 1800000000 }));

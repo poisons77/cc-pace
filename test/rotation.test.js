@@ -359,7 +359,11 @@ test("every decision that changed something leaves a line to read afterwards", a
 
     assert.equal(runRotation(limits(96, 50), logRule, configFile, NOW), "to-peer");
     for (let i = 0; i < 60; i++) {
-        if (JSON.parse(readFileSync(stateFile, "utf8")).active === "B") break;
+        try {
+            if (JSON.parse(readFileSync(stateFile, "utf8")).active === "B") break;
+        } catch {
+            /* caught mid-write by the detached switch */
+        }
         await new Promise((r) => setTimeout(r, 50));
     }
     runRotation(limits(3, 3), logRule, configFile, NOW + COOLDOWN + 1);
@@ -368,6 +372,127 @@ test("every decision that changed something leaves a line to read afterwards", a
     assert.equal(lines.length, 2);
     assert.match(lines[0], /fire action=to-peer from=A target=B because=five_hour read=five_hour:96%/);
     assert.match(lines[1], /land target=B active=B/);
+});
+
+const WEEK = 7 * 86400;
+
+test("a login about to stop refreshing is never switched into", () => {
+    const logins = { B: NOW + 1800, C: null };
+    const three = { accounts: ["A", "B", "C"], buckets: { five_hour: 95 } };
+    const hit = decide({ limits: limits(96, 50), rule: three, active: "A", state: {}, now: NOW, logins });
+    assert.equal(hit.target, "C", "B dies within the hour; C's expiry is unknown, which is allowed");
+
+    const onlyB = decide({ limits: limits(96, 50), rule: peerRule, active: "A", state: {}, now: NOW, logins });
+    assert.equal(onlyB, null, "nowhere else to go");
+
+    // The hour is fixed, the same red line cc-account draws: just past it, B is usable again.
+    const later = decide({ limits: limits(96, 50), rule: peerRule, active: "A", state: {}, now: NOW, logins: { B: NOW + 3600 } });
+    assert.equal(later.target, "B");
+});
+
+test("primary and fallback respect a dead login on either side", () => {
+    assert.equal(decide({ limits: limits(96, 50), rule, active: "A", state: {}, now: NOW, logins: { B: NOW } }), null);
+    const back = { limits: limits(3, 3), rule, active: "B", state: { primaryResetsAt: WK }, now: WK + 61 };
+    assert.equal(decide({ ...back, logins: { A: WK } }), null);
+    assert.equal(decide(back).target, "A");
+});
+
+test("peers are drained in the order their weekly reset would waste quota", () => {
+    // B: 60% used, resets in 2 h - 98% of its week elapsed, 38 points about to be lost.
+    // C: 40% used, resets in 6 days - 14% elapsed, nothing at risk yet, though it has more room.
+    const weekly = { accounts: ["A", "B", "C"], buckets: { seven_day: 95 } };
+    const state = {
+        seen: {
+            B: { at: NOW, buckets: { seven_day: { used: 60, resets: NOW + 7200 } } },
+            C: { at: NOW, buckets: { seven_day: { used: 40, resets: NOW + 6 * 86400 } } },
+        },
+    };
+    const spent = { seven_day: { used_percentage: 96, resets_at: NOW + 86400 } };
+    assert.equal(decide({ limits: spent, rule: weekly, active: "A", state, now: NOW }).target, "B");
+});
+
+test("the ranking is published for cc-account, best first, and kept through a switch", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-rank-"));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+
+    const weekly = { accounts: ["A", "B", "C"], buckets: { seven_day: 95 }, store, command: "node -e 0", log: false };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0, logins: { C: NOW } }));
+    // B's week rolled over a day ago: it has refilled and counts as unused.
+    writeFileSync(
+        stateFile,
+        JSON.stringify({ seen: { B: { at: NOW - WEEK, buckets: { seven_day: { used: 90, resets: NOW - 86400 } } } } }),
+    );
+
+    runRotation({ seven_day: { used_percentage: 40, resets_at: NOW + 3 * 86400 } }, weekly, configFile, NOW);
+    const { ranking } = JSON.parse(readFileSync(stateFile, "utf8"));
+    assert.equal(ranking.at, NOW);
+    assert.deepEqual(ranking.accounts, [
+        { name: "A", eligible: true, reason: null, room: 55, spare: 17, freeAt: null },
+        { name: "B", eligible: true, reason: null, room: 95, spare: 14, freeAt: null },
+        { name: "C", eligible: false, reason: "login", room: 100, spare: null, freeAt: null },
+    ]);
+
+    // An unchanged ranking is not rewritten until it is old enough to look abandoned.
+    runRotation({ seven_day: { used_percentage: 40, resets_at: NOW + 3 * 86400 } }, weekly, configFile, NOW + 60);
+    assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).ranking.at, NOW);
+    runRotation({ seven_day: { used_percentage: 40, resets_at: NOW + 3 * 86400 } }, weekly, configFile, NOW + 600);
+    assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).ranking.at, NOW + 600);
+
+    // Spent: the switch fires, and the ranking rides along with the in-flight state.
+    assert.equal(runRotation({ seven_day: { used_percentage: 96, resets_at: NOW + 3 * 86400 } }, weekly, configFile, NOW + 700), "to-peer");
+    const flying = JSON.parse(readFileSync(stateFile, "utf8"));
+    assert.equal(flying.phase, "switching");
+    assert.ok(Array.isArray(flying.ranking.accounts));
+});
+
+test("a spent account says when it frees: the latest reset among the windows holding it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-free-"));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+
+    const both = { accounts: ["A", "B"], buckets: { five_hour: 95, seven_day: 95 }, store, command: "node -e 0", log: false };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0 }));
+    // B is over both bars: the 5-hour clears in an hour, the week in two days - it needs both.
+    writeFileSync(
+        stateFile,
+        JSON.stringify({
+            seen: {
+                B: { at: NOW, buckets: { five_hour: { used: 99, resets: NOW + 3600 }, seven_day: { used: 97, resets: NOW + 2 * 86400 } } },
+            },
+        }),
+    );
+
+    runRotation(limits(10, 10), both, configFile, NOW);
+    const b = JSON.parse(readFileSync(stateFile, "utf8")).ranking.accounts.find((a) => a.name === "B");
+    assert.equal(b.reason, "spent");
+    assert.equal(b.freeAt, NOW + 2 * 86400);
+});
+
+test("a burn that hits the wall before the next render forces the switch early", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-ahead-"));
+    const configFile = join(dir, "config.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0 }));
+
+    // 80% -> 88% over twenty minutes: 12 points left, gone in thirty minutes.
+    const resets = NOW + 3 * 3600;
+    writeFileSync(
+        join(dir, "burn-history.json"),
+        JSON.stringify({ five_hour: [{ t: NOW - 1200, u: 80, r: resets }, { t: NOW, u: 88, r: resets }] }),
+    );
+    const l = { five_hour: { used_percentage: 88, resets_at: resets } };
+    const base = { ...peerRule, store, command: "node -e 0" };
+
+    assert.equal(runRotation(l, base, configFile, NOW), null, "off by default");
+    assert.equal(runRotation(l, { ...base, switchAheadSecs: 900 }, configFile, NOW), null, "wall still 30 min out");
+    assert.equal(runRotation(l, { ...base, switchAheadSecs: 1800 }, configFile, NOW), "to-peer");
+    assert.match(readFileSync(join(dir, "rotate.log"), "utf8"), /read=five_hour:88%~burn/);
 });
 
 test("a receipt names where you are, not where it put you", () => {

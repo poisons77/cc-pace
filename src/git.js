@@ -48,7 +48,9 @@ export function stateFlags({ dirty, untracked, ahead, behind }, { ascii = false 
  */
 export function readGit(cwd, { timeout = 400 } = {}) {
     try {
-        const stdout = execFileSync("git", ["status", "--porcelain=v2", "--branch"], {
+        // --no-optional-locks: a plain `git status` may refresh the index and take index.lock,
+        // colliding with git commands Claude Code runs in the same repo at the same moment.
+        const stdout = execFileSync("git", ["--no-optional-locks", "status", "--porcelain=v2", "--branch"], {
             cwd,
             timeout,
             encoding: "utf8",

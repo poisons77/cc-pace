@@ -39,6 +39,8 @@ refills.
 | `store` | where the account tool publishes identity (default `~/.claude-accounts`) |
 | `log` | where decisions are appended (default `rotate.log` beside the state file; `false` disables) |
 | `ascii` | plain-text status marks instead of arrows |
+| `enabled` | `false` switches the engine off and keeps every other key, so switching it back on restores the setup |
+| `switchAheadSecs` | also switch when the recent burn rate hits 100% within this many seconds (default off) |
 
 For the primary-and-reserve shape, name `primary` and `fallback` instead of `accounts`, and add
 `returnGraceSeconds` to wait past the reset before returning (default 60). Both shapes read the
@@ -72,7 +74,24 @@ on primary,  any watched window at/above its bar        ->  switch to fallback
 on fallback, the clock passes the stored reset + grace  ->  switch back to primary
 ```
 
-There, the fallback's own usage never triggers a switch: there is nowhere better to go, so moving
+Among peers with room, the target is the one whose weekly reset would waste the most quota
+(elapsed% minus used%), then the one with the most room. Quota left at a reset is lost, so an
+account at 60% whose week ends in two hours is drained before one at 40% with six days left. With
+only 5-hour windows watched, room alone decides.
+
+An account whose saved login stops refreshing within the hour is skipped - the same hour
+cc-account shows in red.
+
+The engine publishes that order as `ranking` in its state file, every account best first with
+`eligible`, `reason` (`login` or `spent`), `room`, `spare` and `freeAt` - when a spent account gets
+room again, the latest reset among the windows holding it. cc-account's `rotate` reads it.
+
+**Switching before the wall.** A switch fires only when the status line renders, and a long
+subagent run can burn the last few percent between two renders. `switchAheadSecs` makes a window
+count as spent once its recent burn rate reaches 100% within that many seconds; the log marks such
+readings `~burn`.
+
+In primary-and-reserve mode, the fallback's own usage never triggers a switch: there is nowhere better to go, so moving
 would only bounce back. When several windows are over at once, the stored block runs until the
 **latest** of their resets - a weekly cap holds the return for days rather than returning within
 the hour and bouncing straight back out.

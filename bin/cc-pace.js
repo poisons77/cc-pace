@@ -13,6 +13,8 @@ import { loadConfig, configPath } from "../src/config.js";
 import { colorEnabled } from "../src/colors.js";
 import { readGit } from "../src/git.js";
 import { runThresholdHook } from "../src/threshold.js";
+import { historyPath, update as updateBurn } from "../src/burn.js";
+import { update as updateShare } from "../src/share.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8"));
@@ -35,6 +37,9 @@ OPTIONS
 SEGMENTS
   Session: 12% (4h37m)               5-hour rolling window
   Weekly:  71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
+  This chat: 35% of burn             this session's share of the last hour's spend
+  Memory: 42%                        how full this conversation is (what /compact clears)
+  Weekly 1h7m to 100% (22:13)        the last hour's rate hits the wall before the reset
   main [*+]                          git branch and working-tree state
 
   Pace ratio is used% divided by elapsed%. 1.00x means exactly on budget;
@@ -59,7 +64,7 @@ function parse(raw) {
     }
 }
 
-function main() {
+async function main() {
     const argv = process.argv.slice(2);
     const has = (flag) => argv.includes(flag);
 
@@ -103,25 +108,40 @@ function main() {
     const cwd = payload.workspace?.current_dir || payload.cwd || payload.workspace?.project_dir;
     const git = config.segments.includes("git") && cwd ? readGit(cwd) : null;
 
+    // --demo carries a fixture payload: it must neither write history nor trigger real switches.
+    const live = !has("--demo") && payload.rate_limits && typeof payload.rate_limits === "object";
+    const file = configPath();
+
+    // Recorded and read in one step, so the warning describes this render rather than the last.
+    const burn = live && config.segments.includes("burn")
+        ? updateBurn(historyPath(file), payload.rate_limits, now)
+        : null;
+
+    // --demo excluded, as above. Unlike the limits, a session's cost exists without a subscription.
+    const share = !has("--demo") && config.segments.includes("share") ? updateShare(file, payload, now) : null;
+
+    // Loaded only when configured: most installs never rotate, and should not pay for the import.
+    // `enabled: false` keeps the user's accounts and thresholds while switching the engine off.
+    const rotating = live && config.rotation && config.rotation.enabled !== false;
+    const rotation = rotating ? await import("../src/rotation.js") : null;
+    const rotationText = rotation && config.segments.includes("rotation") ? rotation.readDisplay(file) : null;
+
     process.stdout.write(
         render(payload, {
             color: colorEnabled({ noColorFlag: has("--no-color") }),
             config,
             git,
             now,
+            notes: { burn, rotation: rotationText, share },
         }),
     );
 
-    // After the line is written, so the hook can never delay the render. --demo carries a fixture
-    // payload and must not trigger real side effects.
-    if (config.onThreshold && !has("--demo")) {
-        runThresholdHook(payload.rate_limits, config.onThreshold, configPath());
-    }
+    // After the line is written, so neither can delay the render. Any switch is spawned detached.
+    if (live && config.onThreshold) runThresholdHook(payload.rate_limits, config.onThreshold, file);
+    if (rotation) rotation.runRotation(payload.rate_limits, config.rotation, file, now);
 }
 
-try {
-    main();
-} catch {
+main().catch(() => {
     // A statusline that throws is worse than a statusline that is briefly empty.
     process.stdout.write("");
-}
+});

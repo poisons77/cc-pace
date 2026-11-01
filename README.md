@@ -21,6 +21,10 @@ Since Claude Code 2.1.80 the statusline payload already contains `rate_limits`. 
 from stdin and does arithmetic. It makes **zero network requests**, consumes **zero tokens**, and
 cannot be rate limited. Run twenty sessions side by side if you like.
 
+What it keeps on disk, beside the config file: `burn-history.json`, a short history of readings the
+recent-burn warning needs, and `sessions/`, one small file per open session for the `share` segment.
+Drop `burn` and `share` from `segments` and nothing is written.
+
 ## Install
 
 The package is published as **`claude-code-pace`**; the command it installs is **`cc-pace`**.
@@ -60,7 +64,14 @@ then is a ratio of `0.99` - dead on target.
 | `0.95 - 1.10` | yellow | on the line |
 | `> 1.10` | red | the window depletes before it resets |
 
-The ETA is the projected moment usage reaches 100% at the current average rate.
+The ETA is the projected moment usage reaches 100% at the current average rate. When the ratio is
+red, the model and its settings follow it - `1.26x Fri 21:20 Opus 5/high +think` - because the
+model is usually the cause and the thing to change.
+
+An average over the whole window cannot see a burst: a quiet week hides a hard hour. The `burn`
+segment measures the rate over roughly the last hour and speaks only when that rate hits 100% before
+the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings from idle sessions:
+[`docs/pace-accuracy.md`](docs/pace-accuracy.md).
 
 ## Segments
 
@@ -69,7 +80,12 @@ The ETA is the projected moment usage reaches 100% at the current average rate.
 | `Session` | `rate_limits.five_hour` - 5-hour rolling window |
 | `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
 | `Opus` / `Sonnet` | `rate_limits.seven_day_opus` / `seven_day_sonnet`, when your plan reports them |
+| `This chat` | this session's share of what all open sessions spent in the last hour, e.g. `This chat: 35% of burn`; shown once a second session is burning |
+| `Memory` | how full this conversation is - what `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything |
+| burn | the recent-rate warning above; empty while the recent rate is safe |
+| rotation | account-switch status, when `rotation` is configured - see below |
 | git | branch plus `*` modified, `+` untracked, `↓n` behind, `↑n` ahead |
+| `! config` | appears when the config file cannot be read, so defaults are in force |
 
 Buckets Claude Code starts sending that cc-pace has never heard of are rendered anyway, with a
 humanised label, rather than silently dropped.
@@ -96,8 +112,9 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 ```json
 {
-  "segments": ["session", "weekly", "git"],
+  "segments": ["limits", "share", "memory", "burn", "rotation", "git"],
   "separator": " | ",
+  "hideCalm": false,
   "paceOn": ["seven_day"],
   "eta": "when-early",
   "minElapsedPct": 2,
@@ -105,12 +122,16 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "danger": 1.1,
   "usedWarn": 50,
   "usedDanger": 80,
+  "memoryWarn": 70,
+  "memoryDanger": 85,
   "ascii": false
 }
 ```
 
 - `segments` - order and contents of the line. `"limits"` expands to every bucket present.
   Aliases: `session`, `weekly`, `opus`, `sonnet`.
+- `hideCalm` - show a window only when it is at or over pace or past `usedWarn`, and the memory
+  only past `memoryWarn`. The line then carries only what needs attention.
 - `paceOn` - which buckets get the ratio and ETA. Add `"five_hour"` to pace the session too.
 - `eta` - `when-early` (default), `always`, or `never`.
 - `minElapsedPct` - how much of a window must have elapsed before its ratio is shown. Below it the
@@ -230,7 +251,7 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 89 tests, node:test, no dependencies
+npm test        # 111 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```

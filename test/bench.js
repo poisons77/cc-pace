@@ -6,13 +6,18 @@
 // part we control, and it stays comparable across machines.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BIN = join(HERE, "..", "bin", "cc-pace.js");
 const input = readFileSync(join(HERE, "fixtures", "on-pace.json"), "utf8");
+
+// The CLI writes burn history beside its config, and runs the rotation engine when one is
+// configured. Point it at an empty directory so the bench measures defaults and touches nothing real.
+const env = { ...process.env, CC_PACE_CONFIG: join(mkdtempSync(join(tmpdir(), "cc-pace-bench-")), "config.json") };
 
 const RUNS = Number(process.env.BENCH_RUNS || 20);
 const OVERHEAD_BUDGET_MS = Number(process.env.BENCH_BUDGET_MS || 30);
@@ -29,7 +34,7 @@ function median(fn) {
 }
 
 const boot = median(() => execFileSync(process.execPath, ["-e", "0"], { stdio: "ignore" }));
-const total = median(() => execFileSync(process.execPath, [BIN], { input, encoding: "utf8" }));
+const total = median(() => execFileSync(process.execPath, [BIN], { input, encoding: "utf8", env }));
 const overhead = total - boot;
 
 console.log(`runs          ${RUNS}`);

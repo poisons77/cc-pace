@@ -61,3 +61,18 @@ export function percent(value) {
 export function ratio(value) {
     return `${value.toFixed(2)}x`;
 }
+
+/**
+ * What the session is burning with: "Opus 5/high +think +fast". Shown beside a ratio that is over
+ * budget, it turns "too fast" into a cause and so into an action. Every field is optional.
+ */
+export function cause(payload) {
+    const name = payload?.model?.display_name || payload?.model?.id;
+    if (typeof name !== "string" || !name) return "";
+    let out = name;
+    const effort = payload?.effort?.level;
+    if (typeof effort === "string" && effort) out += `/${effort}`;
+    if (payload?.thinking?.enabled === true) out += " +think";
+    if (payload?.fast_mode === true) out += " +fast";
+    return out;
+}
