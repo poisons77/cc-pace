@@ -24,6 +24,8 @@ const KEEP_DAYS = 14;
 const HALF_LIFE_HOURS = 3;
 // The level is an average over hours of work; fewer than this many is one burst, not a pace.
 const MIN_LEVEL_HOURS = 1.5;
+// Hours of ledger after which its level alone counts; before, it is blended with the window's.
+const TRUST_HOURS = 3;
 // The profile is hourly, so the burn is constant within an hour and the simulation steps by hours.
 const STEP_SECS = HOUR;
 const MAX_STEPS = 1000;
@@ -140,26 +142,35 @@ export function profile(worked, now) {
 
 /**
  * What the pool burns per hour of work, in percent of one account: worked hours newest first,
- * each weighing half as much as the one three worked hours after it. The current hour counts for
- * the part of it that has passed. Only hours since the ledger started count - before that, nothing
- * recorded what they spent. Null with less than an hour and a half of evidence.
+ * each weighing half as much as the one three worked hours after it. Only the time since the ledger
+ * started counts - before that, nothing recorded what was spent - so the hour it started in and the
+ * current hour each count for the part of them that was recorded.
+ *
+ * `prior` is the level from before the ledger (`windowLevel`). The ledger takes over from it in
+ * proportion to the hours it has seen, all of them past `TRUST_HOURS`, so a ledger that starts over -
+ * on a switch, a rolled window - moves the level gradually rather than replacing it in one render.
+ * Without a prior, null with less than `MIN_LEVEL_HOURS` of evidence.
  */
-export function level(ledger, worked, now) {
-    if (!ledger?.since) return null;
+export function level(ledger, worked, now, prior = null) {
     const current = hourOf(now);
-    const first = Math.ceil(ledger.since / HOUR);
-    const hours = [...worked].filter((h) => h >= first && h <= current).sort((a, b) => b - a);
+    const since = ledger?.since ?? now;
+    const hours = [...worked].filter((h) => h >= hourOf(since) && h <= current).sort((a, b) => b - a);
     let num = 0;
     let den = 0;
     let span = 0;
     hours.forEach((h, k) => {
         const w = 0.5 ** (k / HALF_LIFE_HOURS);
-        const part = h === current ? (now - h * HOUR) / HOUR : 1;
+        const part = (Math.min(now, (h + 1) * HOUR) - Math.max(since, h * HOUR)) / HOUR;
+        if (part <= 0) return;
         num += w * (ledger.hours?.[h] ?? 0);
         den += w * part;
         span += part;
     });
-    return span >= MIN_LEVEL_HOURS && den > 0 ? num / den : null;
+    const own = den > 0 ? num / den : null;
+    if (prior === null) return own !== null && span >= MIN_LEVEL_HOURS ? own : null;
+    if (own === null) return prior;
+    const trust = Math.min(1, span / TRUST_HOURS);
+    return trust * own + (1 - trust) * prior;
 }
 
 /**
@@ -262,7 +273,7 @@ export function outlook({ accounts, ledger, activity, limit, windowSecs, now }) 
     const worked = workedHours(activity, ledger);
     const prof = profile(worked, now);
     if (!prof) return null;
-    const lvl = level(ledger, worked, now) ?? windowLevel(limit, windowSecs, worked, now);
+    const lvl = level(ledger, worked, now, windowLevel(limit, windowSecs, worked, now));
     if (lvl === null) return null;
     const { runsOutAt, resumesAt } = simulate(accounts, burnCurve(lvl, prof, worked, now), windowSecs, now);
     return {

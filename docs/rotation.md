@@ -103,8 +103,10 @@ The forecast is played over the hours this person works (`src/pool.js`):
 - `rate` - what the pool burns per hour of work, in percent of one account. The state file keeps a
   `ledger` of what the active account spent in each hour for two weeks; a switch or a rolled window
   starts a new baseline rather than counting as spend. Worked hours are weighted newest first with
-  a three-hour half-life. Until the ledger holds an hour and a half of work, the active account's
-  use this window over the hours worked in it stands in.
+  a three-hour half-life. The active account's use this window over the hours worked in it is the
+  starting point; the ledger takes over in proportion to the hours of work it has seen, wholly from
+  three, so a fresh ledger moves the rate gradually rather than in one render. The hour the ledger
+  started in counts for the part of it the ledger saw.
 - `workHours` - hours worked per day, from a profile of the share of the last 14 days each hour of
   the day was worked. Worked means a prompt in Claude Code's `history.jsonl` (read incrementally,
   timestamps only, kept as `activity`) or the pool burning.

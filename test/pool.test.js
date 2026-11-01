@@ -113,7 +113,26 @@ test("the level weighs the latest hours of work most, and ignores hours before t
     const lvl = level(ledger, worked, NOW);
     assert.ok(lvl > 2 && lvl < 4, `${lvl}: above the plain 2%/h average, short of the last two hours`);
     assert.equal(level({ since: NOW - 10 * HOUR, hours }, worked, NOW), 4, "only the two hours since the ledger began");
-    assert.equal(level({ since: NOW - 9.5 * HOUR, hours }, worked, NOW), null, "one hour is a burst, not a pace");
+    assert.equal(level({ since: NOW - 9.25 * HOUR, hours }, worked, NOW), null, "an hour and a quarter is a burst, not a pace");
+});
+
+test("the hour the ledger started in counts for the part of it the ledger saw", () => {
+    // Started 30 s into 14:00 yesterday, then 4%/h for two hours: the first hour is not dropped.
+    const hours = { [H - 10]: 4 * (HOUR - 30) / HOUR, [H - 9]: 4 };
+    const worked = new Set([H - 10, H - 9]);
+    const lvl = level({ since: (H - 10) * HOUR + 30, hours }, worked, (H - 8) * HOUR);
+    assert.ok(Math.abs(lvl - 4) < 1e-9, `${lvl}`);
+});
+
+test("a young ledger is blended with the window's level instead of replacing it", () => {
+    const worked = new Set([H - 2, H - 1]);
+    const ledger = { since: (H - 2) * HOUR, hours: { [H - 2]: 1, [H - 1]: 1 } };
+    // Two hours of a three-hour trust: two thirds the ledger's 1%/h, a third the window's 4%/h.
+    assert.ok(Math.abs(level(ledger, worked, NOW, 4) - 2) < 1e-9);
+    const old = { since: (H - 4) * HOUR, hours: { [H - 4]: 1, [H - 3]: 1, [H - 2]: 1, [H - 1]: 1 } };
+    assert.equal(level(old, new Set([H - 4, H - 3, H - 2, H - 1]), NOW, 4), 1, "past three hours, the ledger alone");
+    assert.equal(level(undefined, worked, NOW, 4), 4, "no ledger yet: the window's level");
+    assert.equal(level(ledger, new Set(), NOW, 4), 4, "nothing worked since the ledger: the window's level");
 });
 
 test("before the ledger, the level is the window's use over the hours worked in it", () => {

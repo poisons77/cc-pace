@@ -1,6 +1,6 @@
 {
   "name": "claude-code-pace",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The easiest Claude Code statusline: is your usage burning too fast? One line to set up, zero tokens burnt, no API calls, zero dependencies.",
   "keywords": [
     "claude-code",

@@ -302,7 +302,7 @@ field as optional for that reason.
 ## Development
 
 ```bash
-npm test        # 141 tests, node:test, no dependencies
+npm test        # 143 tests, node:test, no dependencies
 npm run demo
 npm run bench
 ```
