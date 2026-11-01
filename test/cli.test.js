@@ -135,8 +135,8 @@ test("each session sees its own share of the burn, and the shares add up to 100%
     at("alpha", t0, 1);
     assert.equal(at("beta", t0, 5), "", "alpha has spent nothing yet, so there is nothing to compare");
     at("alpha", t0 + 600, 4); // alpha: +3
-    assert.equal(at("beta", t0 + 600, 6), "chat 25%"); // beta: +1 of 4
-    assert.equal(at("alpha", t0 + 600, 4), "chat 75%");
+    assert.equal(at("beta", t0 + 600, 6), "Pool: 25%"); // beta: +1 of 4
+    assert.equal(at("alpha", t0 + 600, 4), "Pool: 75%");
     assert.ok(existsSync(join(dir, "sessions", "alpha.json")));
 });
 

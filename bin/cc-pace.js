@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { render, metrics } from "../src/render.js";
+import { render, metrics, segmentNames } from "../src/render.js";
 import { loadConfig, configPath } from "../src/config.js";
 import { colorEnabled } from "../src/colors.js";
 import { readGit } from "../src/git.js";
@@ -38,10 +38,10 @@ OPTIONS
 SEGMENTS
   Session: 12% (4h37m)               5-hour rolling window
   Weekly:  71% (2d1h) 1.00x Tue 16:26   used%, time left, burn pace, projected 100%
-  Pool: 3.56x/3.0x stop Sat 05:10    with rotation: whether all accounts together last the burn
-  This chat: 35% of burn             this session's share of the last hour's spend
-  Memory: 42%                        how full this conversation is (what /compact clears)
-  cache cold in 12m (270k)           a large conversation's prompt cache is about to expire
+  Pool: 35% ↓22% stop Fri 17:45 +37h   this session's share of the last hour's spend; with
+                                     rotation, ↑ push / ↓ slow down, and when all accounts run dry
+  Cache: 42% cold in 12m (270k)      how full this conversation is (what /compact clears), and
+                                     a warning before a large prompt cache expires
   Weekly 1h7m to 100% (22:13)        the last hour's rate hits the wall before the reset
   main [*+]                          git branch and working-tree state
 
@@ -111,19 +111,20 @@ async function main() {
     }
 
     const cwd = payload.workspace?.current_dir || payload.cwd || payload.workspace?.project_dir;
-    const git = config.segments.includes("git") && cwd ? readGit(cwd) : null;
+    const shown = segmentNames(config.segments);
+    const git = shown.includes("git") && cwd ? readGit(cwd) : null;
 
     // --demo carries a fixture payload: it must neither write history nor trigger real switches.
     const live = !has("--demo") && payload.rate_limits && typeof payload.rate_limits === "object";
     const file = configPath();
 
     // Recorded and read in one step, so the warning describes this render rather than the last.
-    const burn = live && config.segments.includes("burn")
+    const burn = live && shown.includes("burn")
         ? updateBurn(historyPath(file), payload.rate_limits, now)
         : null;
 
     // --demo excluded, as above. Unlike the limits, a session's cost exists without a subscription.
-    const share = !has("--demo") && config.segments.includes("share") ? updateShare(file, payload, now) : null;
+    const share = !has("--demo") && shown.includes("pool") ? updateShare(file, payload, now) : null;
     // Kept current every render, so the shares are ready the moment a ratio turns red.
     const mix = !has("--demo") && config.modelMix ? updateMix(file, payload) : null;
 
@@ -131,8 +132,8 @@ async function main() {
     // `enabled: false` keeps the user's accounts and thresholds while switching the engine off.
     const rotating = live && config.rotation && config.rotation.enabled !== false;
     const rotation = rotating ? await import("../src/rotation.js") : null;
-    const rotationText = rotation && config.segments.includes("rotation") ? rotation.readDisplay(file) : null;
-    const pool = rotation && config.segments.includes("pool") ? rotation.readForecast(file) : null;
+    const rotationText = rotation && shown.includes("rotation") ? rotation.readDisplay(file) : null;
+    const pool = rotation && shown.includes("pool") ? rotation.readForecast(file) : null;
 
     process.stdout.write(
         render(payload, {

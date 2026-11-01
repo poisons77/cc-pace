@@ -92,29 +92,34 @@ function renderBucket(key, limit, { c, cfg, now, payload, notes }) {
     return out;
 }
 
-/** How full this conversation's context window is. Per session: one session's figure is not a share of anything. */
-function renderMemory(payload, { c, cfg }) {
-    const pct = payload?.context_window?.used_percentage;
-    if (typeof pct !== "number") return "";
-    if (cfg.hideCalm && pct < cfg.memoryWarn) return "";
-    const tone = pct >= cfg.memoryDanger ? c.red : pct >= cfg.memoryWarn ? c.yellow : c.green;
-    return `Memory: ${tone(percent(pct))}`;
-}
-
 /**
- * Warns before a large conversation's prompt cache goes cold. Past its TTL the next turn re-sends
- * the whole conversation as cache writes - after a break, one turn can cost more than an hour of
- * work. Silent while the cache is warm with time to spare, or the conversation is small.
+ * Before a large conversation's prompt cache goes cold, a warning: past its TTL the next turn
+ * re-sends the whole conversation as cache writes - after a break, one turn can cost more than an
+ * hour of work. Empty while the cache is warm with time to spare, or the conversation is small.
  */
-function renderCache(payload, { c, cfg, now }) {
+function cacheWarning(payload, { c, cfg, now }) {
     const pc = payload?.prompt_cache;
     const size = pc?.recache_tokens_if_cold;
     if (!pc?.caching_observed || typeof size !== "number" || size < cfg.cacheWarnTokens) return "";
     if (typeof pc.expires_at !== "number") return "";
     const left = pc.expires_at - now;
-    if (left <= 0) return c.red(`cache cold: next turn re-sends ${tokens(size)}`);
-    if (left <= cfg.cacheWarnSecs) return c.yellow(`cache cold in ${duration(left)} (${tokens(size)})`);
+    if (left <= 0) return c.red(`cold, next turn re-sends ${tokens(size)}`);
+    if (left <= cfg.cacheWarnSecs) return c.yellow(`cold in ${duration(left)} (${tokens(size)})`);
     return "";
+}
+
+/**
+ * This conversation's context: how full it is - what the prompt cache holds, and what `/compact`
+ * clears - then the cold-cache warning. Per session: one session's figure is not a share of anything.
+ */
+function renderCache(payload, ctx) {
+    const { c, cfg } = ctx;
+    const pct = payload?.context_window?.used_percentage;
+    const warning = cacheWarning(payload, ctx);
+    const calm = typeof pct !== "number" || (cfg.hideCalm && pct < cfg.memoryWarn);
+    if (calm && !warning) return "";
+    const tone = pct >= cfg.memoryDanger ? c.red : pct >= cfg.memoryWarn ? c.yellow : c.green;
+    return ["Cache:", calm ? "" : tone(percent(pct)), warning].filter(Boolean).join(" ");
 }
 
 /**
@@ -124,26 +129,37 @@ function renderCache(payload, { c, cfg, now }) {
  * +36h`). Without one yet, the burn against what the pool sustains (N accounts sustain N.0x), then
  * the stop or `ok`.
  */
-function renderPool(forecast, { c, cfg, now }) {
+function poolOutlook(forecast, { c, cfg, now }) {
     if (!forecast || !(forecast.sustainable >= 2)) return "";
     const gap =
         typeof forecast.resumesAt === "number" ? ` +${Math.round((forecast.resumesAt - forecast.runsOutAt) / 3600)}h` : "";
     const stop = typeof forecast.runsOutAt === "number" ? ` stop ${clock(forecast.runsOutAt, now)}${gap}` : "";
     if (forecast.rate > 0 && typeof forecast.allowed === "number") {
         const margin = Math.round((forecast.allowed / forecast.rate - 1) * 100);
-        if (margin < 0) return `Pool: ${c.red(`${cfg.ascii ? "v" : "↓"}${-margin}%${stop}`)}`;
-        return `Pool: ${c.green(`${cfg.ascii ? "^" : "↑"}${Math.min(margin, 999)}%`)}`;
+        if (margin < 0) return c.red(`${cfg.ascii ? "v" : "↓"}${-margin}%${stop}`);
+        return c.green(`${cfg.ascii ? "^" : "↑"}${Math.min(margin, 999)}%`);
     }
     if (typeof forecast.burn !== "number") return "";
     const pace = `${fmtRatio(forecast.burn)}/${forecast.sustainable.toFixed(1)}x`;
-    if (stop) return `Pool: ${c.red(`${pace}${stop}`)}`;
-    return `Pool: ${c.green(`${pace} ok`)}`;
+    return stop ? c.red(`${pace}${stop}`) : c.green(`${pace} ok`);
 }
 
-/** This session's share of the cost every open session burned over the last hour. */
-function renderShare(share, { c }) {
-    if (typeof share !== "number") return "";
-    return `chat ${c.cyan(percent(share))}`;
+/**
+ * The burn across sessions and accounts: this session's share of what every open session spent in
+ * the last hour, then whether the accounts in rotation last.
+ */
+function renderPool(notes, ctx) {
+    const share = typeof notes.share === "number" ? ctx.c.cyan(percent(notes.share)) : "";
+    const outlook = poolOutlook(notes.pool, ctx);
+    return share || outlook ? `Pool: ${[share, outlook].filter(Boolean).join(" ")}` : "";
+}
+
+// Segment names from before two pairs merged: the share joined the pool, the memory the cache.
+const MERGED_SEGMENTS = { share: "pool", memory: "cache" };
+
+/** The segments to render, in order, with merged names folded in and each drawn once. */
+export function segmentNames(segments) {
+    return [...new Set(segments.map((name) => MERGED_SEGMENTS[name] ?? name))];
 }
 
 function renderGit(git, { c, cfg }) {
@@ -160,7 +176,7 @@ function renderGit(git, { c, cfg }) {
  * @param {number} [opts.now] Unix seconds.
  * @param {object|null} [opts.git] Result of readGit(), or null.
  * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null}} [opts.notes]
- *   What the `burn`, `rotation`, `share` and `pool` segments show, and the model mix named beside
+ *   What the `burn`, `rotation` and `pool` segments show, and the model mix named beside
  *   an over-budget ratio; the CLI computes them, since all of them keep state on disk.
  * @returns {string}
  */
@@ -172,7 +188,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
     const ctx = { c, cfg, now: nowSecs, payload, notes };
 
     const parts = [];
-    for (const name of cfg.segments) {
+    for (const name of segmentNames(cfg.segments)) {
         if (name === "limits") {
             // A model's own window (Opus, Sonnet, Fable, whatever comes next) only on request: the
             // account-wide windows are the ones that stop work.
@@ -183,10 +199,8 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
             continue;
         }
         if (name === "git") parts.push(renderGit(git, ctx));
-        else if (name === "memory") parts.push(renderMemory(payload, ctx));
         else if (name === "cache") parts.push(renderCache(payload, ctx));
-        else if (name === "share") parts.push(renderShare(notes.share, ctx));
-        else if (name === "pool") parts.push(renderPool(notes.pool, ctx));
+        else if (name === "pool") parts.push(renderPool(notes, ctx));
         else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");
         else {

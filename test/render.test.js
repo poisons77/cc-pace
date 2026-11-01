@@ -135,20 +135,24 @@ const withPayload = (name, extra, config = {}) => {
     return render(payload, { color: false, now: payload._now, config: { ...DEFAULTS, ...config } });
 };
 
-test("how full the conversation is renders as Memory", () => {
+test("how full the conversation is renders as Cache", () => {
     const out = withPayload("on-pace", { context_window: { used_percentage: 42.4 } });
-    assert.equal(out, "Session: 17% (2h30m) | Weekly: 71% (2d0h) 0.99x | Memory: 42%");
+    assert.equal(out, "Session: 17% (2h30m) | Weekly: 71% (2d0h) 0.99x | Cache: 42%");
 });
 
-test("this session's share of the burn renders where its segment sits", () => {
+test("this session's share of the burn opens the Pool segment, the outlook follows", () => {
     const payload = fixture("on-pace");
-    const out = render(payload, {
-        color: false,
-        now: payload._now,
-        config: { ...DEFAULTS, segments: ["weekly", "share"] },
-        notes: { share: 34.6 },
-    });
-    assert.equal(out, "Weekly: 71% (2d0h) 0.99x | chat 35%");
+    const at = (segments, notes) => render(payload, { color: false, now: payload._now, config: { ...DEFAULTS, segments }, notes });
+    assert.equal(at(["weekly", "pool"], { share: 34.6 }), "Weekly: 71% (2d0h) 0.99x | Pool: 35%");
+    const pool = { sustainable: 3, rate: 2.5, allowed: 3.5 };
+    assert.equal(at(["pool"], { share: 34.6, pool }), "Pool: 35% ↑40%");
+    assert.equal(at(["pool"], { pool }), "Pool: ↑40%");
+});
+
+test("the segment names from before the merge still work, each drawn once", () => {
+    const payload = { ...fixture("on-pace"), context_window: { used_percentage: 42 } };
+    const out = render(payload, { color: false, now: payload._now, config: { ...DEFAULTS, segments: ["share", "pool", "memory", "cache"] }, notes: { share: 10 } });
+    assert.equal(out, "Pool: 10% | Cache: 42%");
 });
 
 test("over budget, the line names the model and settings doing the burning", () => {
@@ -225,9 +229,14 @@ const cacheLine = (prompt_cache, now = 1800000000) =>
 const warmCache = { caching_observed: true, warm: true, expires_at: 1800000000 + 720, recache_tokens_if_cold: 270400 };
 
 test("a large conversation's cache is flagged before it goes cold, and once it has", () => {
-    assert.equal(cacheLine(warmCache), "cache cold in 12m (270k)");
-    assert.equal(cacheLine(warmCache, 1800000000 + 720), "cache cold: next turn re-sends 270k");
-    assert.equal(cacheLine({ ...warmCache, recache_tokens_if_cold: 2_400_000 }, 1800000000 + 900), "cache cold: next turn re-sends 2.4m");
+    assert.equal(cacheLine(warmCache), "Cache: cold in 12m (270k)");
+    assert.equal(cacheLine(warmCache, 1800000000 + 720), "Cache: cold, next turn re-sends 270k");
+    assert.equal(cacheLine({ ...warmCache, recache_tokens_if_cold: 2_400_000 }, 1800000000 + 900), "Cache: cold, next turn re-sends 2.4m");
+    const full = render(
+        { prompt_cache: warmCache, context_window: { used_percentage: 61 } },
+        { color: false, now: 1800000000, config: { ...DEFAULTS, segments: ["cache"] } },
+    );
+    assert.equal(full, "Cache: 61% cold in 12m (270k)");
 });
 
 test("the cache warning stays quiet with time to spare, a small conversation, or no caching", () => {

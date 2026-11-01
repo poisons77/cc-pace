@@ -26,9 +26,9 @@ cc-pace does neither. Since Claude Code 2.1.80 the statusline payload already co
 consumes **zero tokens**, and cannot be rate limited. Run twenty sessions side by side if you like.
 
 What it keeps on disk, beside the config file: `burn-history.json`, a short history of readings the
-recent-burn warning needs; `sessions/`, one small file per open session for the `share` segment;
+recent-burn warning needs; `sessions/`, one small file per open session for the session share in `pool`;
 and `models/`, where it is up to in each session's transcript for the model mix. Drop `burn` and
-`share` from `segments` and set `modelMix` to `false`, and nothing is written. It reads the session
+`pool` from `segments` and set `modelMix` to `false`, and nothing is written. It reads the session
 transcripts Claude Code already keeps, only what was added since the last render, and never sends
 them anywhere.
 
@@ -93,10 +93,8 @@ the reset - `Weekly 1h7m to 100% (22:13)`. How it guards against stale readings 
 | `Session` | `rate_limits.five_hour` - 5-hour rolling window |
 | `Weekly` | `rate_limits.seven_day` - 7-day window, carries the pace ratio by default |
 | `Opus` / `Sonnet` / `Fable` | a model's own weekly window, such as `seven_day_fable`, when your plan reports it. Hidden unless `showModelWindows` is on; any model added later is labelled and paced the same way |
-| `Pool` | with account rotation: whether the accounts together last at your working pace - green `↑40%` to push, red `↓24%` to slow down, with when they run dry and for how long - see [With cc-account](#with-cc-account) |
-| `chat` | this session's share of what all open sessions spent in the last hour, e.g. `chat 35%`; shown once a second session is burning |
-| `Memory` | how full this conversation is - what `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything |
-| cache | `cache cold in 12m (270k)`, then `cache cold: next turn re-sends 270k` - a conversation of at least 100k tokens whose prompt cache is within 15 minutes of expiring. Past expiry, the next turn re-sends the whole conversation as cache writes, which can cost more than an hour of work; `/compact` before a break avoids it. From `prompt_cache` in the payload (Claude Code 2.1.251+) |
+| `Pool` | `Pool: 35% ↓24% stop Sat 05:10 +26h`. First, this session's share of what all open sessions spent in the last hour, shown once a second session is burning. Then, with account rotation, whether the accounts together last at your working pace - green `↑40%` to push, red `↓24%` to slow down, with when they run dry and for how many hours - see [With cc-account](#with-cc-account) |
+| `Cache` | `Cache: 42% cold in 12m (270k)`. First, how full this conversation is - what the prompt cache holds and `/compact` clears; yellow from 70%, red from 85%. Each session has its own, so the figures of several sessions do not add up to anything. Then `cold in 12m (270k)`, or `cold, next turn re-sends 270k` once expired: a conversation of at least 100k tokens whose prompt cache is within 15 minutes of expiring. Past expiry, the next turn re-sends the whole conversation as cache writes, which can cost more than an hour of work; `/compact` before a break avoids it. From `prompt_cache` in the payload (Claude Code 2.1.251+) |
 | burn | the recent-rate warning above; empty while the recent rate is safe |
 | rotation | account-switch status, when `rotation` is configured - see below |
 | git | branch plus `*` modified, `+` untracked, `↓n` behind, `↑n` ahead |
@@ -127,7 +125,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 ```json
 {
-  "segments": ["limits", "pool", "share", "memory", "cache", "burn", "rotation", "git"],
+  "segments": ["limits", "pool", "cache", "burn", "rotation", "git"],
   "separator": " | ",
   "hideCalm": false,
   "showModelWindows": false,
@@ -148,11 +146,12 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 ```
 
 - `segments` - order and contents of the line. `"limits"` expands to every bucket present.
-  Aliases: `session`, `weekly`, and any model's name for its own window (`fable`, `opus`).
+  Aliases: `session`, `weekly`, and any model's name for its own window (`fable`, `opus`). The
+  older names `share` and `memory` still work and draw `pool` and `cache`.
 - `showModelWindows` - add every model's own window to `"limits"`. Off by default: the account-wide
   windows are the ones that stop work. Naming one model in `segments` shows only that one.
-- `hideCalm` - show a window only when it is at or over pace or past `usedWarn`, and the memory
-  only past `memoryWarn`. The line then carries only what needs attention.
+- `hideCalm` - show a window only when it is at or over pace or past `usedWarn`, and the cache
+  percentage only past `memoryWarn`. The line then carries only what needs attention.
 - `paceOn` - which buckets get the ratio and ETA. Add `"five_hour"` to pace the session too.
 - `eta` - `when-early` (default), `always`, or `never`.
 - `minElapsedPct` - how much of a window must have elapsed, or been used, before its ratio is
@@ -165,7 +164,7 @@ Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `
 
 ## With cc-account
 
-cc-pace works alone: pace, burn, memory, cache and share need nothing else.
+cc-pace works alone: pace, burn, cache and the session share need nothing else.
 
 Installed with [cc-account](https://github.com/poisons77/cc-account), it also switches accounts by
 itself. cc-pace watches usage and decides where to go; cc-account switches and keeps logins alive.
