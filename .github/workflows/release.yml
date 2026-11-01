@@ -39,5 +39,12 @@ jobs:
           mkdir -p packtest
           tar -xzf claude-code-pace-*.tgz -C packtest
           node packtest/package/bin/cc-pace.js --demo --no-color | grep -q "Weekly: 71%"
+      # A version already on the registry was published by hand; re-running must not turn red.
       - name: Publish
-        run: npm publish
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "claude-code-pace@$version" version >/dev/null 2>&1; then
+            echo "claude-code-pace@$version is already published"
+          else
+            npm publish
+          fi
