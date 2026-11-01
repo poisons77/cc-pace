@@ -25,9 +25,10 @@ ratio    = 1.4 / 0.03   = 47x
 The 47 is almost entirely the small denominator, and the ETA extrapolated three minutes across a
 week - predicting a 7-day budget would be gone that same evening.
 
-**Below `minElapsedPct` (default 2) the ratio and ETA are hidden**; `used%` and time remaining
-still show. Two percent is 3.4 hours into a week, 6 minutes into a 5-hour window. Below it a small
-absolute error in `used%` swamps the ratio; above it the number settles.
+**Below `minElapsedPct` (default 5) the ratio and ETA are hidden**; `used%` and time remaining
+still show. Five percent is 8.4 hours into a week, 15 minutes into a 5-hour window. Below it a small
+absolute error in `used%` swamps the ratio. At 2% the number still swung: three hours into a week,
+7% used read `3.29x` - correct, but moved by every percent.
 
 `--json` reports `pace_reliable` so downstream consumers can tell suppression from absence.
 

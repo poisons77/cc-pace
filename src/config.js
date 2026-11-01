@@ -4,6 +4,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { MIN_ELAPSED_PCT } from "./pace.js";
 
 export const DEFAULTS = {
     // "limits" expands to every rate-limit bucket the payload actually carries. "burn" is the
@@ -20,7 +21,7 @@ export const DEFAULTS = {
     eta: "when-early",
     // Minimum share of a window that must have elapsed before its pace ratio and ETA are shown.
     // Below this the denominator is near zero and the numbers are noise (see src/pace.js).
-    minElapsedPct: 2,
+    minElapsedPct: MIN_ELAPSED_PCT,
     warn: 0.95,
     danger: 1.1,
     // Percentage thresholds that tint the raw used% figure.

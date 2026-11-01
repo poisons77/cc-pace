@@ -118,7 +118,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "showModelWindows": false,
   "paceOn": ["seven_day"],
   "eta": "when-early",
-  "minElapsedPct": 2,
+  "minElapsedPct": 5,
   "warn": 0.95,
   "danger": 1.1,
   "usedWarn": 50,

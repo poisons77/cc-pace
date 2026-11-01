@@ -23,8 +23,9 @@ export function windowSecs(key) {
 // Minutes into a week-long window, `elapsedPct` is a fraction of a percent, so the ratio divides
 // by something close to zero: one percent used three minutes in reads as 47x, and the projected
 // depletion lands the same evening. The early number is an artifact of the small denominator, not
-// a signal, so callers are told when it is too young to show.
-export const MIN_ELAPSED_PCT = 2;
+// a signal, so callers are told when it is too young to show. 5% of a week is ~8 h: a real reading
+// three hours in showed 3.29x at 7% used - correct, but swinging with every percent.
+export const MIN_ELAPSED_PCT = 5;
 
 /**
  * A rate-limit window starts exactly `windowSecs` before it resets, so the budget pace is simply
