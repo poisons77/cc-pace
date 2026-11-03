@@ -60,6 +60,10 @@ I hit the wall doing what I am doing now*.
 It stays silent unless the recent rate would exhaust the window **before** it resets - a wall past
 the reset is not a wall.
 
+The line shows one time per window. When the window with the wall is drawn, the wall's time takes
+the place of the averaged ETA: `Week: 80% (4d9h) 2.16x today 22:13`. The separate
+`Week 1h7m to 100% (22:13)` appears only when that window is not on the line.
+
 | Case | Behaviour |
 |---|---|
 | Window rolls over (new `resets_at`) | history discarded; never averages across windows |

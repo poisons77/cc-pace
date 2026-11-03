@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { label } from "./format.js";
+import { clock, label } from "./format.js";
 
 const KEEP = 60;                  // samples per bucket
 const MAX_AGE_SECS = 6 * 3600;    // history older than this cannot describe "recent"
@@ -170,24 +170,9 @@ export function writeHistory(file, history) {
     writeFileSync(file, JSON.stringify(history));
 }
 
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const dayOffset = (target, reference) => {
-    const a = new Date(target.getFullYear(), target.getMonth(), target.getDate());
-    const b = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-    return Math.round((a - b) / 86400000);
-};
-
 // A bare "22:13" is ambiguous once the wall lands past midnight, so the day is named whenever it
 // is not the current one.
-const wallTime = (ts, now) => {
-    const d = new Date(ts * 1000);
-    const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    const offset = dayOffset(d, new Date(now * 1000));
-    if (offset === 0) return hhmm;
-    const day = { 1: "tomorrow", "-1": "yesterday" }[offset] ?? DAYS[d.getDay()];
-    return `${day} ${hhmm}`;
-};
+const wallTime = (ts, now) => clock(ts, now).replace(/^today /, "");
 
 const shortSpan = (secs) => {
     const h = Math.floor(secs / 3600);
@@ -196,13 +181,16 @@ const shortSpan = (secs) => {
 };
 
 /**
- * Records this render's observation and returns the warning to display, if any.
+ * Records this render's observation and returns the soonest wall, if any: the bucket it is about,
+ * when it lands, and the warning text for the `burn` segment.
  *
  * Only warns when the recent rate would exhaust the window *before* it resets - the cumulative
  * ratio already covers "on budget overall", and a wall that lands after the reset is not a wall.
  *
  * The bucket is named: with more than one window watched, a bare duration leaves the reader doing
  * arithmetic to work out which one it is about.
+ *
+ * @returns {null|{key:string, wallAt:number, text:string}}
  */
 export function update(file, limits, now = Math.floor(Date.now() / 1000), opts = {}) {
     try {
@@ -221,7 +209,12 @@ export function update(file, limits, now = Math.floor(Date.now() / 1000), opts =
         }
         if (!soonest) return null;
 
-        return `${label(soonest.key)} ${shortSpan(soonest.wall.secondsToWall)} to 100% (${wallTime(soonest.wall.wallAt, now)})`;
+        const { key, wall } = soonest;
+        return {
+            key,
+            wallAt: wall.wallAt,
+            text: `${label(key)} ${shortSpan(wall.secondsToWall)} to 100% (${wallTime(wall.wallAt, now)})`,
+        };
     } catch {
         return null;
     }

@@ -196,9 +196,18 @@ test("burn and rotation notes render where their segments sit", () => {
         color: false,
         now: payload._now,
         config: { ...DEFAULTS, segments: ["weekly", "burn", "rotation"] },
-        notes: { burn: "Week 1h7m to 100% (22:13)", rotation: "✓ on personal" },
+        notes: { burn: { key: "five_hour", wallAt: payload._now + 4020, text: "Session 1h7m to 100% (22:13)" }, rotation: "✓ on personal" },
     });
-    assert.equal(out, "Week: 71% (2d0h) 0.99x | Week 1h7m to 100% (22:13) | ✓ on personal");
+    assert.equal(out, "Week: 71% (2d0h) 0.99x | Session 1h7m to 100% (22:13) | ✓ on personal");
+});
+
+test("a wall on a window already drawn replaces its ETA instead of repeating it, wherever burn sits", () => {
+    const payload = fixture("over-pace");
+    const burn = { key: "seven_day", wallAt: payload._now + 3600, text: "Week 1h0m to 100% (x)" };
+    for (const segments of [["weekly", "burn"], ["burn", "weekly"]]) {
+        const out = render(payload, { color: false, now: payload._now, config: { ...DEFAULTS, segments }, notes: { burn } });
+        assert.equal(out, "Week: 90% (2d0h) 1.26x today 09:00", "the last hour's wall, not the average's 21:20");
+    }
 });
 
 const withModels = {

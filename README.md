@@ -83,7 +83,9 @@ reports.
 
 An average over the whole window cannot see a burst: a quiet week hides a hard hour. The `burn`
 segment measures the rate over roughly the last hour and speaks only when that rate hits 100% before
-the reset - `Week 1h7m to 100% (22:13)`. How it guards against stale readings from idle sessions:
+the reset. When that window is on the line, its time replaces the average's - `2.76x today 16:18` -
+since the recent rate describes what is happening now; otherwise it stands alone as
+`Week 1h7m to 100% (22:13)`. How it guards against stale readings from idle sessions:
 [`docs/pace-accuracy.md`](docs/pace-accuracy.md).
 
 ## Segments
@@ -126,7 +128,7 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
 
 ```json
 {
-  "segments": ["limits", "pool", "cache", "burn", "rotation", "git", "chain"],
+  "segments": ["limits", "burn", "pool", "cache", "rotation", "git", "chain"],
   "separator": " | ",
   "hideCalm": false,
   "showModelWindows": false,

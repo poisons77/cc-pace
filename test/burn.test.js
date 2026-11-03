@@ -147,7 +147,9 @@ test("the wall segment names the bucket it is about", () => {
 
     // Both windows project a wall before they reset - the session at 20 minutes, the week at 2h20m.
     // Unlabelled, the only way to tell which one won is to redo the arithmetic.
-    assert.match(seg, /^Session 20m to 100% \(\d\d:\d\d\)$/);
+    assert.equal(seg.key, "five_hour");
+    assert.equal(seg.wallAt, T0 + 3600 + 1200);
+    assert.match(seg.text, /^Session 20m to 100% \(\d\d:\d\d\)$/);
 });
 
 test("a model's window is named after the model, even one cc-pace has never heard of", () => {
@@ -156,5 +158,5 @@ test("a model's window is named after the model, even one cc-pace has never hear
 
     update(file, haiku(80), T0);
     // Same label the limit segments use, so a new limit type reads alike in both.
-    assert.match(update(file, haiku(86), T0 + 3600), /^Haiku 2h20m to 100% \(/);
+    assert.match(update(file, haiku(86), T0 + 3600).text, /^Haiku 2h20m to 100% \(/);
 });

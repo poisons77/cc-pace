@@ -56,7 +56,8 @@ function bucketPace(key, limit, cfg, now) {
     return p?.reliable ? p : null;
 }
 
-function renderBucket(key, limit, { c, cfg, now, payload, notes }) {
+function renderBucket(key, limit, ctx) {
+    const { c, cfg, now, payload, notes } = ctx;
     const p = bucketPace(key, limit, cfg, now);
     const level = p ? paceLevel(p.ratio, cfg) : null;
     if (cfg.hideCalm && limit.used_percentage < cfg.usedWarn && (level === null || level === "ok")) {
@@ -72,7 +73,12 @@ function renderBucket(key, limit, { c, cfg, now, payload, notes }) {
         if (left > 0) out += c.dim(` (${duration(left)})`);
     }
 
-    if (!p) return out;
+    // The last hour's rate describes the current situation better than the whole window's average,
+    // so its wall takes the ETA's place and the `burn` segment stays quiet.
+    const wall = notes.burn?.key === key ? notes.burn : null;
+    if (wall) ctx.wallShown = true;
+
+    if (!p) return wall ? `${out} ${c.red(clock(wall.wallAt, now))}` : out;
 
     const tone = paceTone(c, level);
     out += ` ${tone(fmtRatio(p.ratio))}`;
@@ -83,7 +89,8 @@ function renderBucket(key, limit, { c, cfg, now, payload, notes }) {
             : cfg.eta === "never"
               ? false
               : p.depletesBeforeReset;
-    if (showEta) out += ` ${tone(clock(p.depletesAt, now))}`;
+    if (wall) out += ` ${c.red(clock(wall.wallAt, now))}`;
+    else if (showEta) out += ` ${tone(clock(p.depletesAt, now))}`;
 
     // Over budget, the line names what is doing the burning: the model and its settings.
     const why = level === "danger" ? cause(payload, notes.mix) : "";
@@ -175,7 +182,7 @@ function renderGit(git, { c, cfg }) {
  * @param {object} [opts.config]
  * @param {number} [opts.now] Unix seconds.
  * @param {object|null} [opts.git] Result of readGit(), or null.
- * @param {{burn?: string|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null, chain?: string[]}} [opts.notes]
+ * @param {{burn?: {key: string, wallAt: number, text: string}|null, rotation?: string|null, share?: number|null, mix?: object[]|null, pool?: object|null, chain?: string[]}} [opts.notes]
  *   What the `burn`, `rotation`, `pool` and `chain` segments show, and the model mix named beside
  *   an over-budget ratio; the CLI computes them, since all of them keep state on disk.
  * @returns {string}
@@ -185,7 +192,7 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
     const c = palette(color);
     const nowSecs = now ?? Math.floor(Date.now() / 1000);
     const rateLimits = payload?.rate_limits || {};
-    const ctx = { c, cfg, now: nowSecs, payload, notes };
+    const ctx = { c, cfg, now: nowSecs, payload, notes, wallShown: false };
 
     const parts = [];
     for (const name of segmentNames(cfg.segments)) {
@@ -201,7 +208,8 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
         if (name === "git") parts.push(renderGit(git, ctx));
         else if (name === "cache") parts.push(renderCache(payload, ctx));
         else if (name === "pool") parts.push(renderPool(notes, ctx));
-        else if (name === "burn") parts.push(notes.burn ? c.red(notes.burn) : "");
+        // Decided once every bucket is drawn, wherever the segment sits: the wall shows only once.
+        else if (name === "burn") parts.push(() => (notes.burn && !ctx.wallShown ? c.red(notes.burn.text) : ""));
         else if (name === "rotation") parts.push(notes.rotation ? c.yellow(notes.rotation) : "");
         // The chained statusline keeps its own colours; its lines join the line like segments.
         else if (name === "chain") parts.push(...(notes.chain ?? []));
@@ -213,7 +221,10 @@ export function render(payload, { color = true, config = DEFAULTS, now, git = nu
     // Defaults are in force, so the user's settings are not: say so rather than ignore them silently.
     if (cfg.configError) parts.push(c.yellow("! config"));
 
-    return parts.filter(Boolean).join(c.dim(cfg.separator));
+    return parts
+        .map((part) => (typeof part === "function" ? part() : part))
+        .filter(Boolean)
+        .join(c.dim(cfg.separator));
 }
 
 /**
