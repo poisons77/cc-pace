@@ -41,6 +41,7 @@ refills.
 | `ascii` | plain-text status marks instead of arrows |
 | `enabled` | `false` switches the engine off and keeps every other key, so switching it back on restores the setup |
 | `switchAheadSecs` | also switch when the recent burn rate hits 100% within this many seconds (default off) |
+| `askIfUnreadSecs` | peers only: stop and ask instead of switching into an account last read longer ago than this, or never (default off) |
 
 For the primary-and-reserve shape, name `primary` and `fallback` instead of `accounts`, and add
 `returnGraceSeconds` to wait past the reset before returning (default 60). Both shapes read the
@@ -63,9 +64,23 @@ than fleeing it.
 Peers:
 
 ```
-any watched window at/above its bar  ->  switch to the peer with the most room left
-no peer with room                    ->  stay, and say so
+any watched window at/above its bar        ->  switch to the peer with the most room left
+no peer with room                          ->  stay, and say so
+landed on a peer already at/above its bar  ->  stop, and ask
+the chosen peer read too long ago          ->  stop, and ask   (with askIfUnreadSecs)
 ```
+
+A peer is chosen on what was saved of it, often days old. Its first reading as the live account is
+the check: already over a bar, rotation stops rather than moving on by itself, and stays stopped
+while that account is live and over its bar. Switching account by hand - `cc-account use` or
+`cc-account rotate` - answers it. The question is published as `ask` in the state file:
+
+```
+{ reason: "spent", on, name, used, at }      landed on `name`, already at `used`%
+{ reason: "unread", on, name, readAt, at }   would have moved from `on` to `name`, last read at `readAt`
+```
+
+cc-account shows it in red above the prompt of every session.
 
 Primary and reserve:
 
@@ -136,13 +151,24 @@ the hour and bouncing straight back out.
 The payload describes the active account only, so every other account is judged by what was read of
 it while it *was* active. Those readings are kept per account and carried across switches.
 
-This is stale on utilization and exact on the reset - and staleness costs little, because an
-account nobody is using does not climb. A reset that has passed is the strongest answer available:
-the window has refilled, whatever it last read. An account never observed counts as usable, since
-assuming the worst of an unknown would strand you on a spent one.
+This is stale on utilization and exact on the reset. An account climbs while it is not live only
+through use the status line never sees - claude.ai, the desktop app, another machine - and
+`askIfUnreadSecs` puts a person in front of any switch into a reading older than that. A reset that
+has passed is the strongest answer available: the window has refilled, whatever it last read. An
+account never observed counts as usable, since assuming the worst of an unknown would strand you on
+a spent one.
+
+Use within a window only climbs, so a reading lower than the one saved for the same window is a
+stale payload and the saved one stands. A reading whose reset has passed is not filed.
 
 Readings are **not** filed during the settle window below: they still describe the account just
 left, and filing them under the new one would corrupt the very ledger that picks the next target.
+
+Nor are they filed from a session idle since the switch. Each session's payload comes from its own
+last API response, so an idle session keeps rendering the account it last spoke to, for days. A
+reading outside the live account's own saved window that falls in another account's saved window is
+that account's, and the render decides nothing. On an account rotation has just landed on, any
+reading in another account's saved window waits for the next one.
 
 ## When a switch does not happen
 
@@ -159,6 +185,7 @@ Every decision that changed something appends one line beside the state file:
 ```
 2026-09-01T07:03:01Z fire action=to-peer from=personal target=work because=seven_day read=seven_day:99%
 2026-09-01T07:03:47Z land target=work active=work after=46s
+2026-09-01T07:06:02Z ask reason=spent on=work target=work read=seven_day:99%
 ```
 
 Transitions only - never one per render - so it stays small without pruning. `fire` records what
@@ -172,6 +199,8 @@ Session: 95% (2h18m) | Week: 67% (4d20h) | → switching to personal
 Session: 4% (58m)    | Week: 99% (6d18h) | ! all limited · work in 4d20h
 Session: 2% (5h0m)   | Week: 61% (4d2h)  | ✓ on personal
 Session: 4% (58m)    | Week: 99% (6d18h) | ! switch to work failed
+Session: 3% (4h40m)  | Week: 99% (1d20h) | ! work already at 99% · pick an account
+Session: 40% (2h10m) | Week: 95% (3d2h)  | ! work last read 3d4h ago · switch?
 ```
 
 With `primary` and `fallback`, two more appear: `↩ work in 2h19m` while waiting out the primary's

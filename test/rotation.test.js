@@ -451,6 +451,142 @@ test("the ranking is published for cc-account, best first, and kept through a sw
     assert.ok(Array.isArray(flying.ranking.accounts));
 });
 
+test("a session idle since a switch, still holding another account's numbers, is not taken as the active one's", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-foreign-"));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+
+    const weekly = { accounts: ["A", "B", "C"], buckets: { seven_day: 95 }, store, command: "node -e 0", log: false };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0 }));
+    // B was left at 95% days ago, its week ending in twenty minutes; A is mid-week at 90%.
+    const seen = {
+        A: { at: NOW - 3600, buckets: { seven_day: { used: 90, resets: NOW + 4 * 86400 } } },
+        B: { at: NOW - 5 * 86400, buckets: { seven_day: { used: 95, resets: NOW + 1200 } } },
+    };
+    writeFileSync(stateFile, JSON.stringify({ seen }));
+
+    // The idle session renders B's last payload, a point higher from a turn that ended after the move.
+    const stale = { seven_day: { used_percentage: 96, resets_at: NOW + 1200 } };
+    assert.equal(runRotation(stale, weekly, configFile, NOW), null, "A is not spent: no switch");
+    assert.deepEqual(JSON.parse(readFileSync(stateFile, "utf8")).seen, seen, "A keeps its own reading");
+
+    // Once B's window has refilled, A must still not rank as a fresh week ahead of C.
+    const later = NOW + 1300;
+    const spent = { seven_day: { used_percentage: 96, resets_at: NOW + 4 * 86400 } };
+    assert.equal(runRotation(spent, weekly, configFile, later), "to-peer");
+    assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).target, "B", "B's week has refilled; A's has not");
+});
+
+test("a lower reading of a window already saved is a stale payload, and the saved one stands", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-climb-"));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+
+    const weekly = { accounts: ["A", "B"], buckets: { seven_day: 95 }, store, command: "node -e 0", log: false };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0 }));
+    const resets = NOW + 3 * 86400;
+    const reading = (used) => ({ seven_day: { used_percentage: used, resets_at: resets } });
+    const saved = () => JSON.parse(readFileSync(stateFile, "utf8")).seen.A.buckets.seven_day;
+
+    runRotation(reading(80), weekly, configFile, NOW);
+    runRotation(reading(70), weekly, configFile, NOW + 60);
+    assert.deepEqual(saved(), { used: 80, resets });
+    runRotation(reading(85), weekly, configFile, NOW + 120);
+    assert.deepEqual(saved(), { used: 85, resets });
+
+    // A window already gone describes nothing now, and is not filed over the live one.
+    runRotation({ seven_day: { used_percentage: 10, resets_at: NOW } }, weekly, configFile, NOW + 180);
+    assert.deepEqual(saved(), { used: 85, resets });
+});
+
+/** A temporary engine home: config, published identity, and a reader for the engine's own state. */
+function engineHome(prefix, extra = {}) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    const configFile = join(dir, "config.json");
+    const stateFile = join(dir, "rotation-state.json");
+    const store = join(dir, "store");
+    mkdirSync(store, { recursive: true });
+    const rule = { accounts: ["A", "B", "C"], buckets: { seven_day: 95 }, store, command: "node -e 0", log: false, ...extra };
+    writeFileSync(configFile, JSON.stringify({ rotation: rule }));
+    return {
+        rule,
+        configFile,
+        stateFile,
+        publish: (active, switchedAt = 0) => writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active, switchedAt })),
+        state: () => JSON.parse(readFileSync(stateFile, "utf8")),
+    };
+}
+
+test("an account already spent on landing stops rotation and asks, until a person picks", () => {
+    const home = engineHome("cc-pace-ask-spent-");
+    // The switch to B has just landed, and the first trusted reading of B is over its bar.
+    writeFileSync(home.stateFile, JSON.stringify({ phase: "switching", target: "B", action: "to-peer", firedAt: NOW - 600 }));
+    home.publish("B", NOW - 600);
+    const spent = { seven_day: { used_percentage: 99, resets_at: NOW + 2 * 86400 } };
+
+    assert.equal(runRotation(spent, home.rule, home.configFile, NOW), null, "C has room, but rotation stops");
+    assert.deepEqual(home.state().ask, { reason: "spent", on: "B", name: "B", used: 99, at: NOW });
+    assert.equal(home.state().display, "! B already at 99% · pick an account");
+
+    assert.equal(runRotation(spent, home.rule, home.configFile, NOW + 60), null, "still waiting");
+    assert.equal(home.state().ask.at, NOW, "the same question, not a new one");
+
+    // A manual pick of C is the answer: on C, the question is gone.
+    home.publish("C", NOW + 100);
+    runRotation({ seven_day: { used_percentage: 10, resets_at: NOW + 5 * 86400 } }, home.rule, home.configFile, NOW + 300);
+    assert.equal(home.state().ask, null);
+});
+
+test("an account landed on with room is checked once and rotation carries on", () => {
+    const home = engineHome("cc-pace-ask-fine-");
+    // Left A at 96%; B has never been read.
+    const seen = { A: { at: NOW - 600, buckets: { seven_day: { used: 96, resets: NOW + 86400 } } } };
+    writeFileSync(home.stateFile, JSON.stringify({ phase: "switching", target: "B", action: "to-peer", firedAt: NOW - 600, seen }));
+    home.publish("B", NOW - 600);
+
+    // An idle session still shows A: that is not B already spent, and the check waits for B's own reading.
+    runRotation({ seven_day: { used_percentage: 96, resets_at: NOW + 86400 } }, home.rule, home.configFile, NOW - 1);
+    assert.equal(home.state().ask, undefined);
+    assert.equal(home.state().verify, "B");
+
+    runRotation({ seven_day: { used_percentage: 20, resets_at: NOW + 2 * 86400 } }, home.rule, home.configFile, NOW);
+    assert.equal(home.state().ask, null);
+    assert.equal(home.state().verify, null, "the check is spent on the first reading");
+
+    // Later spent the ordinary way: the move happens without asking.
+    const spent = { seven_day: { used_percentage: 96, resets_at: NOW + 2 * 86400 } };
+    assert.equal(runRotation(spent, home.rule, home.configFile, NOW + 600), "to-peer");
+});
+
+test("with askIfUnreadSecs, a target read too long ago, or never, is asked about instead of switched into", () => {
+    const home = engineHome("cc-pace-ask-unread-", { askIfUnreadSecs: 86400 });
+    home.publish("A");
+    const seen = {
+        B: { at: NOW - 3 * 86400, buckets: { seven_day: { used: 50, resets: NOW + 3 * 86400 } } },
+        C: { at: NOW - 3 * 86400, buckets: { seven_day: { used: 99, resets: NOW + 3 * 86400 } } },
+    };
+    writeFileSync(home.stateFile, JSON.stringify({ seen }));
+    const spent = { seven_day: { used_percentage: 96, resets_at: NOW + 4 * 86400 } };
+
+    assert.equal(runRotation(spent, home.rule, home.configFile, NOW), null);
+    assert.deepEqual(home.state().ask, { reason: "unread", on: "A", name: "B", readAt: NOW - 3 * 86400, at: NOW });
+    assert.equal(home.state().display, "! B last read 3d0h ago · switch?");
+
+    // Read within the day: switched into without asking.
+    writeFileSync(home.stateFile, JSON.stringify({ seen: { ...seen, B: { ...seen.B, at: NOW - 3600 } } }));
+    assert.equal(runRotation(spent, home.rule, home.configFile, NOW), "to-peer");
+
+    // Never read at all is the oldest reading there is.
+    const never = engineHome("cc-pace-ask-never-", { accounts: ["A", "B"], askIfUnreadSecs: 86400 });
+    never.publish("A");
+    assert.equal(runRotation(spent, never.rule, never.configFile, NOW), null);
+    assert.equal(never.state().display, "! B never read · switch?");
+});
+
 test("a spent account says when it frees: the latest reset among the windows holding it", () => {
     const dir = mkdtempSync(join(tmpdir(), "cc-pace-free-"));
     const configFile = join(dir, "config.json");

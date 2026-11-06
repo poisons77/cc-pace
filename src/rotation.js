@@ -161,6 +161,56 @@ function exhausted(limits, rule, now, history) {
         .filter(Boolean);
 }
 
+// Two readings of one window carry the same reset, give or take the payload's jitter.
+const SAME_WINDOW_SECS = 300;
+
+// How far past another account's last reading a stale copy of its payload can still have climbed:
+// turns in flight at the switch finish on the account being left, after it was last filed.
+const STALE_CLIMB_PCT = 2;
+
+const sameWindow = (a, b) => Math.abs(a - b) <= SAME_WINDOW_SECS;
+
+/** Each watched window the payload describes with a reset still ahead: `{ key, used, resets }`. */
+function liveReadings(limits, rule, now) {
+    return watchedBuckets(rule).flatMap(({ key }) => {
+        const limit = limits?.[key];
+        if (!limit || typeof limit.used_percentage !== "number" || !(limit.resets_at > now)) return [];
+        return [{ key, used: limit.used_percentage, resets: limit.resets_at }];
+    });
+}
+
+/**
+ * Whether the payload describes another account than the active one.
+ *
+ * A session's `rate_limits` come from its own last API response, and a session left idle since a
+ * switch keeps the account it last spoke to - for days, if it stays idle. Taken as the active
+ * account's, such a payload can flee an account that is not spent, and files that account as about
+ * to refill: once that stale reset passes it ranks as a fresh week and is switched into while
+ * nearly spent.
+ *
+ * A window cannot move before its reset, so a reading outside the active account's own saved,
+ * still running window belongs to some other account - or to a reset granted early. It is taken as
+ * another account's only when it also falls in that account's saved window, at no more than that
+ * account could have reached since it was left. Anything else - a first reading, a new week, two
+ * accounts that happen to share a reset - is taken as the active account's.
+ *
+ * Except on the account rotation has just landed on, whose first reading decides whether to stop
+ * and ask: there, any reading in another account's saved window waits for the next one, since the
+ * account just left is over its bar by definition and its numbers would read as this one spent.
+ */
+function foreignPayload(state, active, limits, rule, now) {
+    const verifying = state.verify === active;
+    return liveReadings(limits, rule, now).some(({ key, used, resets }) => {
+        const own = state.seen?.[active]?.buckets?.[key];
+        if (own && own.resets > now && sameWindow(own.resets, resets)) return false;
+        if (!verifying && (!own || own.resets <= now)) return false;
+        return Object.entries(state.seen ?? {}).some(([name, seen]) => {
+            const other = seen?.buckets?.[key];
+            return name !== active && other && sameWindow(other.resets, resets) && used <= other.used + STALE_CLIMB_PCT;
+        });
+    });
+}
+
 /**
  * What the payload said about each account, kept from the renders where it was the active one.
  *
@@ -168,22 +218,23 @@ function exhausted(limits, rule, now, history) {
  * stale on utilization and exact on when the window rolls over - and staleness barely costs
  * anything, because an account nobody is using does not climb. What ages out is the reset, and a
  * reset in the past is the strongest possible answer: the window has refilled.
+ *
+ * Use within a window only climbs, so a lower reading of the window already saved is a stale
+ * payload and the saved one stands. A reading whose reset has passed describes a window already
+ * gone and is not filed.
  */
 function observe(state, active, limits, rule, now) {
     if (!active || !limits) return state;
+    const prior = state.seen?.[active]?.buckets;
     const buckets = {};
-    for (const { key } of watchedBuckets(rule)) {
-        const limit = limits[key];
-        if (limit && typeof limit.used_percentage === "number" && limit.resets_at) {
-            buckets[key] = { used: limit.used_percentage, resets: limit.resets_at };
-        }
+    for (const { key, used, resets } of liveReadings(limits, rule, now)) {
+        const saved = prior?.[key];
+        const climbed = saved && sameWindow(saved.resets, resets) ? Math.max(saved.used, used) : used;
+        buckets[key] = { used: climbed, resets };
     }
     if (Object.keys(buckets).length === 0) return state;
 
-    const prior = state.seen?.[active];
-    const same =
-        prior && JSON.stringify(prior.buckets) === JSON.stringify(buckets);
-    if (same) return state;
+    if (JSON.stringify(prior) === JSON.stringify(buckets)) return state;
     return { ...state, seen: { ...state.seen, [active]: { at: now, buckets } } };
 }
 
@@ -394,6 +445,33 @@ function decideAmong({ limits, rule, active, state, now, logins, history }) {
 }
 
 /**
+ * The question rotation is waiting on, or null. One stands while its account is live and still over
+ * a bar; leaving that account - a manual `use` or `rotate` - is the answer.
+ *
+ * The first reading of an account rotation just landed on raises one when it is already over its
+ * bar: the saved reading that chose it was wrong, and moving on by itself would trust the next
+ * saved reading just as blindly.
+ */
+function pendingQuestion(state, active, over, now) {
+    if (over.length === 0) return null;
+    if (state.verify === active) {
+        const used = Math.round(Math.max(...over.map((entry) => entry.limit.used_percentage)));
+        return { reason: "spent", on: active, name: active, used, at: now };
+    }
+    return state.ask?.on === active ? state.ask : null;
+}
+
+/**
+ * With `rule.askIfUnreadSecs`, whether an account was last read longer ago than that, or never.
+ * A saved reading cannot see use made elsewhere - claude.ai, another machine - so past this age
+ * the switch waits for a person instead of trusting it.
+ */
+function unread(rule, seen, now) {
+    if (typeof rule?.askIfUnreadSecs !== "number") return false;
+    return typeof seen?.at !== "number" || now - seen.at > rule.askIfUnreadSecs;
+}
+
+/**
  * Pure decision: what should happen for this payload, given who is active and what we remember.
  * `logins` is cc-account's published expiry per account; `history` the burn history, read only
  * when `rule.switchAheadSecs` is set.
@@ -490,6 +568,14 @@ export function display(rule, state, now, { active } = {}) {
         return `${g.warn} switch to ${state.failed.target} failed`;
     }
 
+    // Rotation has stopped and waits for a person: nothing else on the bar matters more.
+    if (state?.ask?.on === active) {
+        const { reason, name, used, readAt } = state.ask;
+        if (reason === "spent") return `${g.warn} ${name} already at ${used}% · pick an account`;
+        const age = typeof readAt === "number" ? `last read ${shortTime(now - readAt)} ago` : "never read";
+        return `${g.warn} ${name} ${age} · switch?`;
+    }
+
     if (s?.kind === "held") {
         const left = shortTime(s.secondsUntilFree);
         return `${g.warn} all limited · ${s.target} in ${left}`;
@@ -579,8 +665,10 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             // The switch runs detached with its output discarded, so the account tool publishing
             // the target is the only evidence it worked. Without this split a switch that never
             // happened is recorded as one that did, and the bar reports a move you did not make.
+            // A peer is chosen on what was saved of it, which is days old; its first reading as the
+            // live account is the check the move itself could not make.
             state = landed
-                ? { ...stored, phase: "idle", lastAction: stored.action, completedAt: nowSecs, failed: null }
+                ? { ...stored, phase: "idle", lastAction: stored.action, completedAt: nowSecs, failed: null, verify: peers ? stored.target : null }
                 : {
                       ...stored,
                       phase: "idle",
@@ -599,8 +687,9 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
         // The account changed too recently for this payload to describe it. Render, decide nothing -
         // and record nothing, because filing these readings under the new account would write the
         // account you just left into the ledger as though it were the one you arrived at.
+        // A session idle since a switch still holds another account's numbers: the same rule applies.
         const settling = nowSecs - (switchedAt ?? 0) < SETTLE_SECS;
-        if (settling) {
+        if (settling || foreignPayload(state, active, limits, rule, nowSecs)) {
             const text = display(rule, state, nowSecs, { active });
             if (state.display !== text) writeState(file, { ...state, display: text });
             return null;
@@ -623,16 +712,35 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             };
         }
         const filed = observed !== state;
-        state = observed;
+        const over = exhausted(limits, rule, nowSecs, history);
+        const asked = peers ? pendingQuestion(state, active, over, nowSecs) : state.ask ?? null;
+        state = { ...observed, verify: null, ask: asked };
 
-        const hit = decide({ limits, rule, active, state, now: nowSecs, logins, history });
+        let hit = asked ? null : decide({ limits, rule, active, state, now: nowSecs, logins, history });
+        if (hit && peers && unread(rule, state.seen?.[hit.target], nowSecs)) {
+            const readAt = state.seen?.[hit.target]?.at ?? null;
+            state = { ...state, ask: { reason: "unread", on: active, name: hit.target, readAt, at: nowSecs } };
+            hit = null;
+        }
+        const raised = state.ask && state.ask !== observed.ask ? state.ask : null;
+        const changed =
+            filed || (observed.verify ?? null) !== null || JSON.stringify(observed.ask ?? null) !== JSON.stringify(state.ask);
+        if (raised) {
+            logEvent(configFile, rule, "ask", {
+                reason: raised.reason,
+                on: raised.on,
+                target: raised.name,
+                read: raised.reason === "spent" ? readingsOf(over) : raised.readAt === null ? "never" : `${shortTime(nowSecs - raised.readAt)}-ago`,
+            });
+        }
 
         if (!hit) {
             let next = state;
             if (peers) {
                 // Nowhere with room is the one thing the bar must say plainly, so it is recorded
-                // rather than recomputed: the renderer never sees the payload.
-                const stuck = exhausted(limits, rule, nowSecs, history).length > 0;
+                // rather than recomputed: the renderer never sees the payload. A pending question
+                // is not "nowhere": somewhere may have room, and the answer decides.
+                const stuck = over.length > 0 && !state.ask;
                 const soonest = rule.accounts
                     .filter((name) => name !== active)
                     .flatMap((name) =>
@@ -658,11 +766,11 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             if (!peers && active === rule.fallback) {
                 // While parked here, watch this account too: if it is also capped there is nowhere
                 // to move, and the status line should say that instead of promising a switch.
-                const capped = exhausted(limits, rule, nowSecs, history).length > 0;
+                const capped = over.length > 0;
                 if (state.fallbackExhausted !== capped) next = { ...state, fallbackExhausted: capped };
             }
             const text = display(rule, next, nowSecs, { active });
-            if (filed || next !== state || next.display !== text) {
+            if (changed || next !== state || next.display !== text) {
                 writeState(file, { ...next, display: text });
             }
             return null;
@@ -673,7 +781,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
         // enough that a broken command costs a line in the log instead of a spawn storm.
         if (state.failed?.target === hit.target && nowSecs - state.failed.at < RETRY_SECS) {
             const text = display(rule, state, nowSecs, { active });
-            if (filed || state.display !== text) writeState(file, { ...state, display: text });
+            if (changed || state.display !== text) writeState(file, { ...state, display: text });
             return null;
         }
 
@@ -703,7 +811,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             from: active,
             target: hit.target,
             because: hit.because?.join(",") ,
-            read: readingsOf(exhausted(limits, rule, nowSecs, history)),
+            read: readingsOf(over),
         });
 
         const bin = rule.command || "cc-account";
