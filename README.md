@@ -253,6 +253,18 @@ Session: 95% (2h18m) | Week: 67% (4d20h) | → switching to personal
 Session: 2% (5h0m)   | Week: 61% (4d2h)  | ✓ on personal
 ```
 
+A target is chosen on what was last read of it, and use made elsewhere - claude.ai, the desktop app
+- never reaches that reading. So the first reading after a switch is checked: when the account is
+already over its limit, rotation stops rather than moving on, and waits for you to pick an account.
+`askIfUnreadSecs` also stops before switching into an account last read longer ago than that:
+
+```
+Session: 3% (4h40m)  | Week: 99% (1d20h) | ! personal already at 99% · pick an account
+Session: 40% (2h10m) | Week: 95% (3d2h)  | ! personal last read 3d4h ago · switch?
+```
+
+With the cc-account plugin, every open session shows the question in red until it is answered.
+
 Name `primary` and `fallback` instead of `accounts` for a reserve account you return to rather than
 peers you rotate between.
 
