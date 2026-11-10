@@ -3,6 +3,19 @@
 Every release is also on [GitHub Releases](https://github.com/poisons77/cc-pace/releases) and on npm
 as [`claude-code-pace`](https://www.npmjs.com/package/claude-code-pace).
 
+## 0.6.0 - 2026-11-10
+
+**Fixed**
+
+- On Windows, copies of cc-pace no longer pile up. Claude Code cancels a statusline render by
+  killing the Git Bash that runs it, and a kill that lands while bash is starting node leaves that
+  node paused forever, before cc-pace has run a line: ~4 MB each, 109 of them in six days on one
+  machine. Once an hour a render now closes such copies in the background - one paused thread, no
+  CPU ever used, over a minute old, parent gone. `"reapStuck": false` turns it off. The cause is
+  in Claude Code: [anthropics/claude-code#98976](https://github.com/anthropics/claude-code/issues/98976).
+- A time a week or more away carries the day of the month - `Sat 14 16:15` - so it never reads as
+  this week's. A pool forecast played across a whole window, or `eta: "always"`, lands there.
+
 ## 0.5.1 - 2026-11-06
 
 - The README describes how rotation stops to ask, with both status lines.

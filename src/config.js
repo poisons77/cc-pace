@@ -49,6 +49,8 @@ export const DEFAULTS = {
     // Optional {bucket, at, run}: runs a command once per window when used% crosses `at`.
     // See src/threshold.js.
     onThreshold: null,
+    // Windows: hourly, close copies of cc-pace left paused by a cancelled render. See src/reap.js.
+    reapStuck: true,
 };
 
 export function configPath(env = process.env) {

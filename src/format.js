@@ -46,11 +46,13 @@ function dayOffset(target, reference) {
 }
 
 /**
- * Local 24h clock, dated relative to now: "today 18:39", "tomorrow 04:15", "Fri 16:26".
+ * Local 24h clock, dated relative to now: "today 18:39", "tomorrow 04:15", "Fri 16:26",
+ * "Sat 14 16:15".
  *
  * A weekday name is precise but needs a moment's thought - "Wed 18:39" reads as a future date even
- * when Wednesday is today. Within a day either side, the relative word is unambiguous; beyond that
- * the weekday is, because a rate-limit window never spans more than a week.
+ * when Wednesday is today. Within a day either side, the relative word is unambiguous; within six
+ * days either side, the weekday is. A week or more away, the weekday is today's or recurs, so the
+ * day of the month goes beside it: a pool forecast played across a whole window lands there.
  */
 export function clock(unixSecs, nowSecs = Math.floor(Date.now() / 1000), DateImpl = Date) {
     const d = new DateImpl(unixSecs * 1000);
@@ -58,7 +60,8 @@ export function clock(unixSecs, nowSecs = Math.floor(Date.now() / 1000), DateImp
     const mm = String(d.getMinutes()).padStart(2, "0");
 
     const offset = dayOffset(d, new DateImpl(nowSecs * 1000));
-    const day = { 0: "today", 1: "tomorrow", "-1": "yesterday" }[offset] ?? DAYS[d.getDay()];
+    const weekday = Math.abs(offset) < 7 ? DAYS[d.getDay()] : `${DAYS[d.getDay()]} ${d.getDate()}`;
+    const day = { 0: "today", 1: "tomorrow", "-1": "yesterday" }[offset] ?? weekday;
     return `${day} ${hh}:${mm}`;
 }
 

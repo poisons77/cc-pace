@@ -35,7 +35,7 @@ test("under-pace hides the ETA because the window never runs dry", () => {
 });
 
 test("eta:always shows the projection even when it is safe", () => {
-    assert.match(plain("under-pace", { eta: "always" }), /0\.42x \w{3} \d{2}:\d{2}$/);
+    assert.match(plain("under-pace", { eta: "always" }), /0\.42x \w{3} \d{1,2} \d{2}:\d{2}$/);
 });
 
 test("eta:never suppresses the clock entirely", () => {

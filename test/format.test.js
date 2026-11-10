@@ -20,6 +20,12 @@ test("dates within a day either side read as relative words", () => {
 test("further out falls back to the weekday", () => {
     assert.equal(clock(at(2, 9, 0), NOW), "Fri 09:00");
     assert.equal(clock(at(4, 9, 0), NOW), "Sun 09:00");
+    assert.equal(clock(at(6, 9, 0), NOW), "Tue 09:00");
+});
+
+test("a week or more away carries the day of the month, so it never reads as today", () => {
+    assert.equal(clock(at(7, 13, 15), NOW), "Wed 19 13:15");
+    assert.equal(clock(at(-7, 9, 0), NOW), "Wed 5 09:00");
 });
 
 test("the boundary is the calendar date, not 24 elapsed hours", () => {

@@ -160,6 +160,23 @@ test("--demo leaves no history behind", () => {
     assert.ok(!existsSync(join(dir, "burn-history.json")));
 });
 
+// A live payload carries no `_now`; only then may the CLI sweep the machine's real processes.
+test("a live render on Windows schedules the stuck-copy sweep, a fixture never does", () => {
+    const live = sandbox();
+    const fixed = sandbox();
+    const env = (file) => ({ ...process.env, NO_COLOR: "1", CC_PACE_CONFIG: file });
+    execFileSync(process.execPath, [BIN], { input: "{}", encoding: "utf8", env: env(live.file) });
+    execFileSync(process.execPath, [BIN], { input: fixture("on-pace"), encoding: "utf8", env: env(fixed.file) });
+    assert.equal(existsSync(join(live.dir, "reap-stamp.json")), process.platform === "win32");
+    assert.ok(!existsSync(join(fixed.dir, "reap-stamp.json")));
+});
+
+test("reapStuck: false keeps the sweep off", () => {
+    const { dir, file } = sandbox({ reapStuck: false });
+    execFileSync(process.execPath, [BIN], { input: "{}", encoding: "utf8", env: { ...process.env, CC_PACE_CONFIG: file } });
+    assert.ok(!existsSync(join(dir, "reap-stamp.json")));
+});
+
 test("a broken config file is flagged on the line, not ignored silently", () => {
     assert.match(run([], fixture("on-pace"), { config: "{ not json" }), /\| ! config$/);
     assert.match(run([], fixture("on-pace"), { config: { segments: "weekly" } }), /! config$/);

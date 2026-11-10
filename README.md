@@ -144,7 +144,8 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   "memoryDanger": 85,
   "cacheWarnTokens": 100000,
   "cacheWarnSecs": 900,
-  "ascii": false
+  "ascii": false,
+  "reapStuck": true
 }
 ```
 
@@ -161,6 +162,10 @@ Optional. Zero-config is the supported default. `~/.config/cc-pace/config.json`:
   shown. Below both the denominator is near zero and the number is noise; a heavy early burn
   (12% used 3% into the week) shows at once.
 - `ascii` - use `v`/`^` instead of `↓`/`↑` for fonts without the arrows.
+- `reapStuck` - Windows only. Claude Code cancels a statusline render by killing the Git Bash that
+  runs it, and a kill that lands while bash is starting node leaves that copy of cc-pace paused
+  forever, ~4 MB each. Once an hour, in the background, cc-pace closes such copies: one paused
+  thread, no CPU ever used, over a minute old, parent gone. `false` turns it off.
 
 Environment overrides: `CC_PACE_SEGMENTS`, `CC_PACE_SEPARATOR`, `CC_PACE_ETA`, `CC_PACE_ASCII`,
 `CC_PACE_CONFIG`, `NO_COLOR`.

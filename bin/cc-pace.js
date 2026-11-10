@@ -160,6 +160,11 @@ async function main() {
     // After the line is written, so neither can delay the render. Any switch is spawned detached.
     if (live && config.onThreshold) runThresholdHook(payload.rate_limits, config.onThreshold, file);
     if (rotation) rotation.runRotation(payload.rate_limits, config.rotation, file, now);
+    // Real processes, real clock: a fixture payload (pinned `_now`) or --demo must not sweep them.
+    // Imported only where it can run: the stuck copies exist only on Windows.
+    if (config.reapStuck && process.platform === "win32" && !has("--demo") && now === undefined) {
+        (await import("../src/reap.js")).reapStuck(file);
+    }
 
     // A chained command that outlived its timeout can leave a grandchild holding the process open:
     // on Windows, killing the shell does not kill what the shell started. Once the line is out,
