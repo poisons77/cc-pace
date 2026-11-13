@@ -3,7 +3,7 @@
 Every release is also on [GitHub Releases](https://github.com/poisons77/cc-pace/releases) and on npm
 as [`claude-code-pace`](https://www.npmjs.com/package/claude-code-pace).
 
-## Unreleased
+## 0.7.0 - 2026-11-13
 
 **New**
 
