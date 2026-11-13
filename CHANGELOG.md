@@ -3,6 +3,22 @@
 Every release is also on [GitHub Releases](https://github.com/poisons77/cc-pace/releases) and on npm
 as [`claude-code-pace`](https://www.npmjs.com/package/claude-code-pace).
 
+## Unreleased
+
+**New**
+
+- One account can have limits of its own. `perAccount` in the rotation config overrides the shared
+  `buckets` for that account, field by field; every other account keeps the shared limits. The
+  account is left at its own limit and ranked by the room under it. cc-account's settings menu sets
+  it.
+
+**Fixed**
+
+- Rotation no longer forgets the other accounts. Every open session writes the same state file, and
+  a session reading it mid-write took it as empty and saved an empty one over it, so accounts last
+  seen spent ranked as fresh. The file is now replaced whole, and one that cannot be read is left
+  alone.
+
 ## 0.6.0 - 2026-11-10
 
 **Fixed**
