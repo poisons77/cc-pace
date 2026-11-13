@@ -3,6 +3,14 @@
 Every release is also on [GitHub Releases](https://github.com/poisons77/cc-pace/releases) and on npm
 as [`claude-code-pace`](https://www.npmjs.com/package/claude-code-pace).
 
+## Unreleased
+
+**Changed**
+
+- Installed once with `npm install -g claude-code-pace`, run as `cc-pace`: `--setup` prints that
+  command instead of `npx -y claude-code-pace`, which could keep running an old cached copy.
+- The README says how to update.
+
 ## 0.7.0 - 2026-11-13
 
 **New**

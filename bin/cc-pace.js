@@ -79,7 +79,7 @@ async function main() {
         const snippet = {
             // refreshInterval redraws the line while the session is idle, which is when the
             // cache warning and the countdowns matter.
-            statusLine: { type: "command", command: "npx -y claude-code-pace", refreshInterval: 60 },
+            statusLine: { type: "command", command: "cc-pace", refreshInterval: 60 },
         };
         process.stdout.write(`${JSON.stringify(snippet, null, 2)}\n`);
         return;

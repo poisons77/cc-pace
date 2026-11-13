@@ -74,7 +74,7 @@ test("NO_COLOR suppresses every escape sequence", () => {
 
 test("--setup prints a pasteable settings snippet", () => {
     const { statusLine } = JSON.parse(run(["--setup"]));
-    assert.equal(statusLine.command, "npx -y claude-code-pace");
+    assert.equal(statusLine.command, "cc-pace");
     assert.equal(statusLine.refreshInterval, 60, "redraws while idle, when the cache warning matters");
 });
 

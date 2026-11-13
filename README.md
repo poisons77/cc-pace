@@ -36,27 +36,37 @@ them anywhere.
 
 The package is published as **`claude-code-pace`**; the command it installs is **`cc-pace`**.
 
-```jsonc
-// ~/.claude/settings.json
-{
-  "statusLine": { "type": "command", "command": "npx -y claude-code-pace", "refreshInterval": 60 }
-}
-```
-
-`cc-pace --setup` prints that snippet. For a faster cold start, install it once and drop the `npx`:
-
 ```bash
 npm install -g claude-code-pace
 ```
 
 ```jsonc
-{ "statusLine": { "type": "command", "command": "cc-pace", "refreshInterval": 60 } }
+// ~/.claude/settings.json
+{
+  "statusLine": { "type": "command", "command": "cc-pace", "refreshInterval": 60 }
+}
 ```
+
+`cc-pace --setup` prints that snippet.
 
 `refreshInterval` redraws the line every minute while the session is idle. Without it the line
 only changes when something happens, so the cache warning and the countdowns go stale during a break.
 
 Restart Claude Code.
+
+## Updating
+
+```bash
+npm install -g claude-code-pace@latest
+cc-pace --version
+```
+
+The next redraw runs the new version; Claude Code needs no restart. cc-pace makes no network
+calls, so it never reports a newer version itself: [`CHANGELOG.md`](CHANGELOG.md) and the
+[GitHub releases](https://github.com/poisons77/cc-pace/releases) list what each one changes.
+
+A statusline still set to `npx -y claude-code-pace` can keep running a copy npx cached earlier.
+Install globally as above and set the command to `cc-pace`.
 
 ## The pace ratio
 
