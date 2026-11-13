@@ -14,7 +14,7 @@
 // Nothing here may throw or block: this runs inside a synchronous statusline render.
 
 import { spawn } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { computePace, WINDOW_SECS, windowSecs as windowLength } from "./pace.js";
@@ -72,11 +72,23 @@ function loginDead(logins, name, now) {
     return typeof expires === "number" && expires - now < LOGIN_MARGIN_SECS;
 }
 
+/**
+ * The saved state: `{}` when there is none yet, null when the file exists but cannot be read.
+ * The caller must not write over a null: the file holds the only readings of every account not
+ * live right now, and saving a fresh state in its place loses them.
+ */
 function readState(file) {
+    let text;
     try {
-        return JSON.parse(readFileSync(file, "utf8"));
+        text = readFileSync(file, "utf8");
+    } catch (error) {
+        return error?.code === "ENOENT" ? {} : null;
+    }
+    try {
+        const state = JSON.parse(text);
+        return state && typeof state === "object" ? state : null;
     } catch {
-        return {};
+        return null;
     }
 }
 
@@ -85,13 +97,24 @@ function readState(file) {
  * status line redrawn on every turn is current enough, and keeps the engine off the render path.
  */
 export function readDisplay(configFile) {
-    const text = readState(statePath(configFile)).display;
+    const text = readState(statePath(configFile))?.display;
     return typeof text === "string" && text ? text : null;
 }
 
+/**
+ * Every session renders and writes this file, so a write lands whole or not at all: written beside
+ * it, then renamed over it. A reader never sees half a file.
+ */
 function writeState(file, state) {
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`);
+    try {
+        renameSync(temp, file);
+    } catch (error) {
+        rmSync(temp, { force: true });
+        throw error;
+    }
 }
 
 /**
@@ -110,31 +133,40 @@ function writeState(file, state) {
  * The last shape raises the bar as the window nears its reset. Percent abandoned early in a
  * window is percent unavailable for days, so the move happens at `at`; once the refill is close
  * the same percent is nearly worthless, and `lateAt` drains the account instead of fleeing it.
+ *
+ * Given an `account`, its entry in `rule.perAccount` overrides the shared bars field by field:
+ *   perAccount: { work: { seven_day: 80 } }                     weekly at 80, late bar as shared
+ *   perAccount: { work: { seven_day: { lateAt: false } } }      no late bar for this account
+ * The windows watched stay the shared ones; an override for an unwatched window is ignored.
  */
-export function watchedBuckets(rule) {
+export function watchedBuckets(rule, account) {
     const fallbackAt = typeof rule?.at === "number" ? rule.at : 95;
     const num = (value, fallback) => (typeof value === "number" ? value : fallback);
+    const own = account === undefined ? null : rule?.perAccount?.[account];
+    const entryOf = (key, spec) => {
+        const override = own?.[key];
+        const merged = {
+            ...(spec && typeof spec === "object" ? spec : { at: spec }),
+            ...(override && typeof override === "object" ? override : typeof override === "number" ? { at: override } : {}),
+        };
+        const entry = { key, at: num(merged.at, fallbackAt) };
+        // Both halves are required: a bar with no window, or a window with no bar, describes
+        // nothing. Keeping them off the entry leaves the plain shape byte-identical.
+        if (typeof merged.lateAt === "number" && typeof merged.lateWithinSecs === "number") {
+            entry.lateAt = merged.lateAt;
+            entry.lateWithinSecs = merged.lateWithinSecs;
+        }
+        return entry;
+    };
     if (rule?.buckets && !Array.isArray(rule.buckets) && typeof rule.buckets === "object") {
-        return Object.entries(rule.buckets).map(([key, spec]) => {
-            if (!spec || typeof spec !== "object") return { key, at: num(spec, fallbackAt) };
-            const entry = { key, at: num(spec.at, fallbackAt) };
-            // Both halves are required: a bar with no window, or a window with no bar, describes
-            // nothing. Keeping them off the entry leaves the plain shape byte-identical.
-            if (typeof spec.lateAt === "number" && typeof spec.lateWithinSecs === "number") {
-                entry.lateAt = spec.lateAt;
-                entry.lateWithinSecs = spec.lateWithinSecs;
-            }
-            return entry;
-        });
+        return Object.entries(rule.buckets).map(([key, spec]) => entryOf(key, spec));
     }
-    if (Array.isArray(rule?.buckets) && rule.buckets.length) {
-        return rule.buckets.map((key) => ({ key, at: fallbackAt }));
-    }
-    return [{ key: rule?.bucket ?? "five_hour", at: fallbackAt }];
+    const keys = Array.isArray(rule?.buckets) && rule.buckets.length ? rule.buckets : [rule?.bucket ?? "five_hour"];
+    return keys.map((key) => entryOf(key, fallbackAt));
 }
 
 /**
- * Windows at or over their own threshold, with a reset still in the future.
+ * Windows of `account` at or over their own threshold, with a reset still in the future.
  *
  * A reset already in the past marks a payload rendered before the window rolled over: acting on
  * it would flee a window that has just refilled, and would store an expired reset so the return
@@ -145,9 +177,9 @@ export function watchedBuckets(rule) {
  * subagent run can burn the last few percent between two renders - after which the turn dies on the
  * limit and the switch has to be made by hand. Such entries carry `burn: true`.
  */
-function exhausted(limits, rule, now, history) {
+function exhausted(limits, rule, account, now, history) {
     const ahead = typeof rule?.switchAheadSecs === "number" ? rule.switchAheadSecs : null;
-    return watchedBuckets(rule)
+    return watchedBuckets(rule, account)
         .map((bucket) => ({ ...bucket, limit: limits?.[bucket.key] }))
         .filter(({ limit }) => limit && typeof limit.used_percentage === "number" && limit.resets_at > now)
         .map((entry) => {
@@ -244,8 +276,8 @@ function observe(state, active, limits, rule, now) {
  * A window whose reset has passed counts as empty rather than as last seen: that is the one fact
  * time improves rather than degrades.
  */
-function windowRooms(seen, rule, now) {
-    return watchedBuckets(rule).flatMap(({ key, at, lateAt, lateWithinSecs }) => {
+function windowRooms(seen, rule, account, now) {
+    return watchedBuckets(rule, account).flatMap(({ key, at, lateAt, lateWithinSecs }) => {
         const bucket = seen?.buckets?.[key];
         if (!bucket) return [];
         const rolled = bucket.resets <= now;
@@ -260,16 +292,16 @@ function windowRooms(seen, rule, now) {
  * as wide open - assuming the worst of an unknown account would strand you on a spent one for no
  * reason.
  */
-function headroom(seen, rule, now) {
-    return Math.min(100, ...windowRooms(seen, rule, now).map((w) => w.room));
+function headroom(seen, rule, account, now) {
+    return Math.min(100, ...windowRooms(seen, rule, account, now).map((w) => w.room));
 }
 
 /**
  * When a spent account gets room again: the latest reset among the windows holding it over its
  * bar, since every one of them has to clear. Null when nothing holds it.
  */
-function freeAt(seen, rule, now) {
-    const over = windowRooms(seen, rule, now).filter((w) => w.room <= 0);
+function freeAt(seen, rule, account, now) {
+    const over = windowRooms(seen, rule, account, now).filter((w) => w.room <= 0);
     return over.length ? Math.max(...over.map((w) => w.resets)) : null;
 }
 
@@ -319,7 +351,7 @@ const rotationAccounts = (rule) =>
 function rankAccounts(rule, state, logins, now) {
     return rotationAccounts(rule)
         .map((name) => {
-            const room = headroom(state?.seen?.[name], rule, now);
+            const room = headroom(state?.seen?.[name], rule, name, now);
             const reason = loginDead(logins, name, now) ? "login" : room > 0 ? null : "spent";
             return {
                 name,
@@ -328,7 +360,7 @@ function rankAccounts(rule, state, logins, now) {
                 room,
                 spare: spare(state?.seen?.[name], rule, now),
                 // Only a spent account frees on its own; a dead login waits for a re-login.
-                freeAt: reason === "spent" ? freeAt(state?.seen?.[name], rule, now) : null,
+                freeAt: reason === "spent" ? freeAt(state?.seen?.[name], rule, name, now) : null,
             };
         })
         .sort((a, b) => b.eligible - a.eligible || (b.spare ?? 0) - (a.spare ?? 0) || b.room - a.room);
@@ -424,7 +456,7 @@ function sameForecast(a, b) {
 
 /** The forecast the last decision published, for the status line. */
 export function readForecast(configFile) {
-    const f = readState(statePath(configFile)).forecast;
+    const f = readState(statePath(configFile))?.forecast;
     return f && typeof f === "object" ? f : null;
 }
 
@@ -436,7 +468,7 @@ export function readForecast(configFile) {
 function decideAmong({ limits, rule, active, state, now, logins, history }) {
     if (!rule.accounts.includes(active)) return null;
 
-    const over = exhausted(limits, rule, now, history);
+    const over = exhausted(limits, rule, active, now, history);
     if (over.length === 0) return null;
 
     const target = rankAccounts(rule, state, logins, now).find((a) => a.eligible && a.name !== active);
@@ -488,7 +520,7 @@ export function decide({ limits, rule, active, state, now, logins = {}, history 
     const grace = typeof rule.returnGraceSeconds === "number" ? rule.returnGraceSeconds : 60;
 
     if (active === rule.primary) {
-        const over = exhausted(limits, rule, now, history);
+        const over = exhausted(limits, rule, active, now, history);
         if (over.length === 0) return null;
         if (loginDead(logins, rule.fallback, now)) return null;
         // Blocked until the longest of the exhausted windows frees: a 5-hour window clears in
@@ -649,6 +681,8 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
         const store = rule.store || join(homedir(), ".claude-accounts");
         const file = statePath(configFile);
         const stored = readState(file);
+        // Mid-write by another session, or damaged: skip this render rather than replace it.
+        if (stored === null) return null;
         const { active, switchedAt, logins } = published(store);
         // Read-only here: the status line writes the history on every render.
         const history = typeof rule.switchAheadSecs === "number" ? readHistory(historyPath(configFile)) : null;
@@ -712,7 +746,7 @@ export function runRotation(limits, rule, configFile, nowSecs = Math.floor(Date.
             };
         }
         const filed = observed !== state;
-        const over = exhausted(limits, rule, nowSecs, history);
+        const over = exhausted(limits, rule, active, nowSecs, history);
         const asked = peers ? pendingQuestion(state, active, over, nowSecs) : state.ask ?? null;
         state = { ...observed, verify: null, ask: asked };
 

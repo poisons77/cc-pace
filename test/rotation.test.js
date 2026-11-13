@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -170,6 +170,50 @@ test("a window near its reset is drained to the later bar, not fled at the earli
     assert.deepEqual(at(weekly(99, 30 * 3600)).because, ["seven_day"]);
 });
 
+test("an account's own bars win over the shared ones, field by field", () => {
+    const shared = { five_hour: 95, seven_day: { at: 90, lateAt: 95, lateWithinSecs: 172_800 } };
+    const perRule = {
+        buckets: shared,
+        perAccount: {
+            A: { seven_day: 80 },
+            B: { seven_day: { lateAt: false }, five_hour: { at: 85 } },
+            C: { opus: 50 },
+        },
+    };
+    assert.deepEqual(watchedBuckets(perRule, "A"), [
+        { key: "five_hour", at: 95 },
+        { key: "seven_day", at: 80, lateAt: 95, lateWithinSecs: 172_800 },
+    ]);
+    assert.deepEqual(watchedBuckets(perRule, "B"), [
+        { key: "five_hour", at: 85 },
+        { key: "seven_day", at: 90 },
+    ]);
+    // An override for a window nobody watches adds nothing; an account without one follows the shared bars.
+    assert.deepEqual(watchedBuckets(perRule, "C"), watchedBuckets(perRule));
+    assert.deepEqual(watchedBuckets(perRule, "D"), watchedBuckets(perRule));
+    assert.deepEqual(watchedBuckets({ buckets: ["five_hour"], at: 90, perAccount: { A: { five_hour: 70 } } }, "A"), [
+        { key: "five_hour", at: 70 },
+    ]);
+});
+
+test("each peer is fled and ranked against its own bars", () => {
+    const perRule = {
+        accounts: ["A", "B", "C"],
+        buckets: { seven_day: 90 },
+        perAccount: { A: { seven_day: 80 }, B: { seven_day: 98 } },
+    };
+    const weekly = (used) => ({ seven_day: { used_percentage: used, resets_at: WK } });
+    const on = (who, used, state = {}) => decide({ limits: weekly(used), rule: perRule, active: who, state, now: NOW });
+
+    assert.deepEqual(on("A", 80).because, ["seven_day"], "A leaves at its own 80");
+    assert.equal(on("C", 85), null, "C follows the shared 90");
+    assert.equal(on("B", 95), null, "B stays until its own 98");
+
+    // B saved at 94 still has room under its 98; under the shared 90 it would count as spent.
+    const seen = { B: { at: NOW - 60, buckets: { seven_day: { used: 94, resets: WK } } }, C: { at: NOW - 60, buckets: { seven_day: { used: 91, resets: WK } } } };
+    assert.equal(on("A", 85, { seen }).target, "B");
+});
+
 test("a switch too recent to be described by the payload decides nothing", () => {
     const dir = mkdtempSync(join(tmpdir(), "cc-pace-settle-"));
     const configFile = join(dir, "config.json");
@@ -196,6 +240,29 @@ test("a switch too recent to be described by the payload decides nothing", () =>
     // Once the payload has caught up, the same reading is trusted again.
     publish(NOW - 600);
     assert.equal(runRotation(limits(96, 50), settleRule, configFile, NOW), "to-fallback");
+});
+
+test("a state file caught mid-write is left alone, never replaced by a fresh one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-pace-torn-"));
+    const configFile = join(dir, "config.json");
+    const store = join(dir, "store");
+    const stateFile = join(dir, "rotation-state.json");
+    mkdirSync(store, { recursive: true });
+
+    const tornRule = { ...peerRule, store };
+    writeFileSync(join(store, "rotation-state.json"), JSON.stringify({ active: "A", switchedAt: 0 }));
+    const torn = '{ "seen": { "B": { "at": 1, "buckets": { "seven_day": { "used": 9';
+    writeFileSync(stateFile, torn);
+
+    assert.equal(runRotation(limits(50, 50), tornRule, configFile, NOW), null);
+    assert.equal(readFileSync(stateFile, "utf8"), torn, "B's reading must survive");
+
+    // Once readable, the next render files A beside B and leaves no temporary file behind.
+    writeFileSync(stateFile, JSON.stringify({ seen: { B: { at: 1, buckets: { seven_day: { used: 99, resets: WK } } } } }));
+    runRotation(limits(50, 50), tornRule, configFile, NOW);
+    const seen = JSON.parse(readFileSync(stateFile, "utf8")).seen;
+    assert.deepEqual(Object.keys(seen).sort(), ["A", "B"]);
+    assert.deepEqual(readdirSync(dir).filter((name) => name.endsWith(".tmp")), []);
 });
 
 test("standing on the primary answers a pending return", () => {

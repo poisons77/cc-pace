@@ -35,6 +35,7 @@ refills.
 |---|---|
 | `accounts` | peers to rotate between, in no particular order |
 | `buckets` | windows to watch, each with the percentage that forces a move |
+| `perAccount` | bars for one account, overriding `buckets` window by window (see below) |
 | `command` | prefix invoked as `<command> use <account>` (default `cc-account`) |
 | `store` | where the account tool publishes identity (default `~/.claude-accounts`) |
 | `log` | where decisions are appended (default `rotate.log` beside the state file; `false` disables) |
@@ -58,6 +59,21 @@ percent abandoned there is gone for days, which is why 99 suits it and 95 suits 
 percent unavailable for days, so the move happens at `at`; inside `lateWithinSecs` of the reset the
 refill is close and the same percent is nearly worthless, so `lateAt` drains the account rather
 than fleeing it.
+
+**Give one account its own bars.** `perAccount` maps an account name to windows in the `buckets`
+shapes, and each field set there wins over the shared one; every field left out, and every account
+left out, follows `buckets`. `"lateAt": false` removes the late bar for that account alone. The
+account is left at its own bars and ranked by the room under them.
+
+```json
+"perAccount": {
+  "work": { "seven_day": 80 },
+  "personal": { "seven_day": { "lateAt": false } }
+}
+```
+
+Here `work` leaves its week at 80% and still drains to the shared `lateAt` near the reset;
+`personal` leaves at the shared `at` all week. Overrides apply only to windows `buckets` watches.
 
 ## Behaviour
 
